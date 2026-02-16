@@ -21,19 +21,23 @@ pnpm typecheck        # Type check this package
 
 Tailwind Loops is a corridor-based route engine for human-powered activities (cycling, running, walking). The key insight is routing on **corridors** (continuous stretches with uniform character) rather than individual street segments, which produces routes with better "flow".
 
-### Two-Level Abstraction
+### Three-Level Abstraction
 
 1. **Graph** (low-level): Street network from OSM with nodes (intersections) and edges (segments). Each edge has a `SurfaceClassification` with confidence scores from multiple data sources.
 
 2. **Corridors** (high-level): Derived from graph by clustering contiguous similar edges. These are the primary routing unit—a 3-mile rail-trail becomes one corridor, not hundreds of edges.
 
+3. **Connectors** (linking): Short segments that connect corridors together. These represent transitions between corridors—intersection crossings, short blocks linking two streets, etc. Connectors have their own attributes (crossing difficulty, signals, stops) that factor into route scoring.
+
 ### Data Pipeline
 
 ```
-OSM + Gravelmap + other sources → Graph (with surface confidence) → Corridors → Route Search
-                                                                         ↑
-                                            User Intent → RoutingPolicy ─┘
+OSM + Gravelmap + other sources → Graph (with surface confidence) → Corridors + Connectors → Route Search
+                                                                                    ↑
+                                                       User Intent → RoutingPolicy ─┘
 ```
+
+The pipeline produces a `CorridorNetwork` containing both corridors and connectors, which forms the graph that routing operates on.
 
 ### Key Domain Concepts
 
@@ -41,14 +45,41 @@ OSM + Gravelmap + other sources → Graph (with surface confidence) → Corridor
 - **ActivityIntent**: What user wants (activity type, distance, surface/traffic tolerance)
 - **RoutingPolicy**: Weights and constraints derived from intent, used by search
 - **Corridor**: Continuous stretch with CorridorType (trail, path, quiet-road, collector, arterial)
+- **Connector**: Short segment linking corridors, with attributes for crossing difficulty, signals, stops
+
+### Corridor Network Model
+
+The `CorridorNetwork` is the primary structure for routing:
+
+```
+    ═══════════════╗         ╔═══════════════════════
+    CORRIDOR A     ║         ║     CORRIDOR C
+    (rail trail)   ║         ║     (residential)
+    ═══════════════╝         ╚═══════════════════════
+                   │         │
+                   └────┬────┘
+                        │
+                   [CONNECTOR]  ← short segment, scores crossing difficulty
+                        │
+                   ┌────┴────┐
+                   │         │
+    ───────────────┘         └───────────────────────
+              CORRIDOR B (quiet neighborhood)
+```
+
+- **Corridors**: Long stretches (100m+ typically) with uniform character
+- **Connectors**: Short segments (<100m typically) that link corridors
+- **Adjacency**: Graph structure where both corridors and connectors are nodes
+
+This abstraction reduces a 100k+ edge graph to perhaps 1-5k corridors + connectors, making routing much faster while preserving route quality.
 
 ### Module Responsibilities
 
 | Module | Purpose |
 |--------|---------|
-| `domain/` | Core types: Graph, Corridor, Intent, Route, SurfaceClassification |
+| `domain/` | Core types: Graph, Corridor, Connector, Intent, Route, SurfaceClassification |
 | `ingestion/` | OSM parsing + surface enrichment from providers (Gravelmap, etc.) |
-| `corridors/` | Cluster edges into corridors, classify by type |
+| `corridors/` | Cluster edges into corridors and connectors, classify by type |
 | `search/` | Corridor-aware route search with policy scoring |
 | `llm/` | Intent interpretation, corridor description, route critique |
 

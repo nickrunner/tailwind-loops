@@ -18,6 +18,7 @@ import type {
   SurfaceDataSource,
   SurfaceType,
 } from "../domain/index.js";
+import { parseOsmPbf, buildGraphFromOsm } from "./osm/index.js";
 
 /** Bounding box for a region */
 export interface BoundingBox {
@@ -117,15 +118,80 @@ export interface IngestionResult {
  * @returns The base graph and statistics
  */
 export async function ingestOsm(
-  _options: OsmIngestionOptions
+  options: OsmIngestionOptions
 ): Promise<IngestionResult> {
-  // TODO: Implement OSM parsing
-  // 1. Parse PBF file using osm-pbf-parser or similar
-  // 2. Filter to relevant highway types
-  // 3. Build graph nodes and edges
-  // 4. Extract surface from OSM tags (surface=*, highway inference)
-  // 5. Create initial SurfaceClassification with OSM-only confidence
-  throw new Error("Not implemented: ingestOsm");
+  const startTime = Date.now();
+
+  // Parse OSM PBF and build graph
+  const elements = parseOsmPbf(options.pbfPath, {
+    activities: options.activities,
+  });
+  const { graph, stats: buildStats } = await buildGraphFromOsm(elements);
+
+  // Compute surface statistics
+  const surfaceStats = computeSurfaceStats(graph);
+
+  const ingestionTimeMs = Date.now() - startTime;
+
+  return {
+    graph,
+    stats: {
+      nodesCount: buildStats.nodesCount,
+      edgesCount: buildStats.edgesCount,
+      totalLengthMeters: buildStats.totalLengthMeters,
+      ingestionTimeMs,
+      surface: surfaceStats,
+    },
+  };
+}
+
+/**
+ * Compute surface statistics from a graph.
+ */
+function computeSurfaceStats(graph: Graph): SurfaceStats {
+  let highConfidenceCount = 0;
+  let mediumConfidenceCount = 0;
+  let lowConfidenceCount = 0;
+  let conflictCount = 0;
+  const bySurfaceType: Record<SurfaceType, number> = {
+    paved: 0,
+    asphalt: 0,
+    concrete: 0,
+    gravel: 0,
+    dirt: 0,
+    unpaved: 0,
+    unknown: 0,
+  };
+
+  for (const edge of graph.edges.values()) {
+    const { surfaceClassification } = edge.attributes;
+    const { surface, confidence, hasConflict } = surfaceClassification;
+
+    // Count by confidence level
+    if (confidence > 0.7) {
+      highConfidenceCount++;
+    } else if (confidence > 0.4) {
+      mediumConfidenceCount++;
+    } else {
+      lowConfidenceCount++;
+    }
+
+    // Count conflicts
+    if (hasConflict) {
+      conflictCount++;
+    }
+
+    // Count by surface type
+    bySurfaceType[surface] = (bySurfaceType[surface] ?? 0) + 1;
+  }
+
+  return {
+    highConfidenceCount,
+    mediumConfidenceCount,
+    lowConfidenceCount,
+    conflictCount,
+    bySurfaceType,
+  };
 }
 
 /**

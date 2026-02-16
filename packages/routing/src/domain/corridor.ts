@@ -62,9 +62,66 @@ export interface Corridor {
   geometry: Coordinate[];
 }
 
-/** A collection of corridors for a region */
+/**
+ * Connector - a short segment that links corridors together.
+ *
+ * While corridors represent long, continuous stretches with uniform character,
+ * connectors are the "glue" between them. They typically represent:
+ * - Short blocks at intersections
+ * - Transitions between different road types
+ * - Complex intersection crossings
+ *
+ * Connectors are first-class entities in the network to enable:
+ * - Clean graph structure for routing (corridors + connectors as nodes)
+ * - Scoring of transitions (e.g., "this connector crosses a busy road")
+ * - Persistence alongside corridors in the database
+ */
+export interface ConnectorAttributes {
+  /** Total length in meters */
+  lengthMeters: number;
+  /** Does this connector cross a major road? */
+  crossesMajorRoad: boolean;
+  /** Is there a traffic signal at this connector? */
+  hasSignal: boolean;
+  /** Is there a stop sign? */
+  hasStop: boolean;
+  /** Estimated crossing difficulty (0-1, higher = harder) */
+  crossingDifficulty: number;
+}
+
+/** A connector - short segment linking corridors */
+export interface Connector {
+  id: string;
+  /** Edge IDs that make up this connector */
+  edgeIds: string[];
+  /** Corridor IDs this connects (usually 2, but can be 3+ at complex intersections) */
+  corridorIds: string[];
+  /** Start node ID */
+  startNodeId: string;
+  /** End node ID */
+  endNodeId: string;
+  /** Attributes for scoring */
+  attributes: ConnectorAttributes;
+  /** Geometry for display */
+  geometry: Coordinate[];
+}
+
+/**
+ * A collection of corridors and connectors for a region.
+ *
+ * This forms a graph where:
+ * - Corridors are the "main" segments (long stretches)
+ * - Connectors are the "links" between corridors (short transitions)
+ *
+ * Routing operates on this abstraction rather than the raw edge graph.
+ */
 export interface CorridorNetwork {
   corridors: Map<string, Corridor>;
-  /** Adjacency: corridorId -> connected corridorIds */
-  connections: Map<string, string[]>;
+  connectors: Map<string, Connector>;
+  /**
+   * Adjacency list for the corridor/connector graph.
+   * Maps corridor/connector ID → IDs of adjacent corridors/connectors.
+   * Both corridors and connectors appear as keys and values.
+   */
+  adjacency: Map<string, string[]>;
 }
