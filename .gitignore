@@ -5,7 +5,9 @@ node_modules/
 dist/
 
 # Data files (OSM extracts, etc.)
-data/
+# Ignore large state/region files, but allow city-level extracts
+data/*-latest.osm.pbf
+data/michigan*.osm.pbf
 
 # IDE
 .idea/
