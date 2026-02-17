@@ -376,11 +376,18 @@ export {
 } from "./corridor-attributes.js";
 export {
   scoreFlow,
+  scoreFlowWithParams,
   scoreSafety,
+  scoreSafetyWithParams,
   scoreSurface,
+  scoreSurfaceWithParams,
   scoreCharacter,
+  scoreCharacterWithParams,
   scoreCorridor,
+  scoreCorridorWithParams,
   scoreCorridors,
+  scoreCorridorsWithParams,
+  getDefaultScoringParams,
   DEFAULT_SCORING_WEIGHTS,
 } from "./scoring.js";
-export type { ScoringWeights } from "./scoring.js";
+export type { ScoringWeights, ScoringParams, FlowParams, SafetyParams } from "./scoring.js";

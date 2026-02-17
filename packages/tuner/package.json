@@ -1,0 +1,15 @@
+{
+  "name": "@tailwind-loops/tuner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@tailwind-loops/routing": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.2"
+  }
+}

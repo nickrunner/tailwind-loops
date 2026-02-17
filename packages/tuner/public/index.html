@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scoring Tuner</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; height: 100vh; background: #1a1a2e; color: #e0e0e0; }
+
+  .top-bar { display: flex; align-items: center; padding: 8px 16px; background: #16213e; border-bottom: 1px solid #0f3460; gap: 16px; flex-shrink: 0; }
+  .top-bar h1 { font-size: 16px; font-weight: 600; white-space: nowrap; }
+  .top-bar select { background: #0f3460; color: #e0e0e0; border: 1px solid #533483; padding: 4px 8px; border-radius: 4px; font-size: 13px; }
+  .top-bar .status { margin-left: auto; font-size: 12px; color: #8888aa; }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  .sidebar { width: 300px; overflow-y: auto; padding: 12px; background: #16213e; border-right: 1px solid #0f3460; flex-shrink: 0; }
+  .sidebar h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; color: #888; margin: 12px 0 6px; letter-spacing: 0.5px; }
+  .sidebar h2:first-child { margin-top: 0; }
+
+  .slider-row { display: flex; align-items: center; margin: 4px 0; gap: 6px; }
+  .slider-row label { font-size: 12px; width: 110px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slider-row input[type="range"] { flex: 1; min-width: 0; accent-color: #533483; }
+  .slider-row .val { font-size: 11px; width: 38px; text-align: right; font-family: monospace; flex-shrink: 0; color: #aaa; }
+
+  .section { margin-bottom: 8px; }
+  .section-header { cursor: pointer; user-select: none; font-size: 12px; font-weight: 600; color: #bbb; padding: 4px 0; display: flex; align-items: center; gap: 4px; }
+  .section-header::before { content: '\25B6'; font-size: 9px; transition: transform 0.2s; display: inline-block; }
+  .section-header.open::before { transform: rotate(90deg); }
+  .section-body { display: none; padding-left: 4px; }
+  .section-body.open { display: block; }
+
+  .checkbox-row { display: flex; align-items: center; margin: 3px 0; gap: 6px; font-size: 12px; }
+  .checkbox-row input[type="checkbox"] { accent-color: #533483; }
+
+  .btn { background: #0f3460; color: #e0e0e0; border: 1px solid #533483; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-top: 12px; width: 100%; }
+  .btn:hover { background: #533483; }
+
+  #map { flex: 1; }
+
+  .footer { padding: 6px 16px; background: #16213e; border-top: 1px solid #0f3460; font-size: 12px; color: #8888aa; flex-shrink: 0; }
+
+  /* Leaflet popup */
+  .score-popup { font-family: monospace; font-size: 11px; line-height: 1.6; }
+  .score-popup .name { font-family: sans-serif; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .score-popup .bar { display: inline-block; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <h1>Scoring Tuner</h1>
+  <label>
+    Activity:
+    <select id="activity">
+      <option value="road-cycling">Road Cycling</option>
+      <option value="gravel-cycling">Gravel Cycling</option>
+      <option value="running">Running</option>
+      <option value="walking">Walking</option>
+    </select>
+  </label>
+  <span class="status" id="status">Loading...</span>
+</div>
+
+<div class="main">
+  <div class="sidebar" id="sidebar">
+    <h2>Corridor Types</h2>
+    <div id="visibility-section"></div>
+
+    <h2>Dimension Weights</h2>
+    <div id="weights-section"></div>
+
+    <div class="section">
+      <div class="section-header" data-section="flow">Flow Params</div>
+      <div class="section-body" id="flow-section"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-header" data-section="safety">Safety Sub-Weights</div>
+      <div class="section-body" id="safety-section"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-header" data-section="character">Character Scores</div>
+      <div class="section-body" id="character-section"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-header" data-section="surface">Surface Scores</div>
+      <div class="section-body" id="surface-section"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-header" data-section="confidence">Surface Confidence</div>
+      <div class="section-body" id="confidence-section"></div>
+    </div>
+
+    <button class="btn" id="reset-btn">Reset Defaults</button>
+    <button class="btn" id="save-btn" style="background:#1a4a1a;border-color:#2d7a2d">Save to Code</button>
+  </div>
+
+  <div id="map"></div>
+</div>
+
+<div class="footer" id="footer">Initializing...</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let params = null;
+let debounceTimer = null;
+let corridorLayer = null;
+let map = null;
+let lastGeoJson = null;
+
+const ALL_CORRIDOR_TYPES = ['trail', 'path', 'quiet-road', 'collector', 'arterial', 'mixed'];
+
+// Which corridor types are hidden by default per activity
+const HIDDEN_BY_DEFAULT = {
+  'road-cycling': new Set(['trail', 'path']),
+  'gravel-cycling': new Set([]),
+  'running': new Set([]),
+  'walking': new Set([]),
+};
+
+// Current visibility state: type → boolean
+let visibleTypes = {};
+
+const ACTIVITY_LABELS = {
+  'road-cycling': 'Road Cycling',
+  'gravel-cycling': 'Gravel Cycling',
+  'running': 'Running',
+  'walking': 'Walking',
+};
+
+// ---------------------------------------------------------------------------
+// Slider builder
+// ---------------------------------------------------------------------------
+function makeSlider(container, key, label, value, min, max, step) {
+  const row = document.createElement('div');
+  row.className = 'slider-row';
+
+  const lbl = document.createElement('label');
+  lbl.textContent = label;
+  lbl.title = key;
+
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.min = min;
+  input.max = max;
+  input.step = step;
+  input.value = value;
+  input.dataset.key = key;
+
+  const valSpan = document.createElement('span');
+  valSpan.className = 'val';
+  valSpan.textContent = Number(value).toFixed(2);
+
+  input.addEventListener('input', () => {
+    valSpan.textContent = Number(input.value).toFixed(2);
+    scheduleScore();
+  });
+
+  row.append(lbl, input, valSpan);
+  container.appendChild(row);
+  return input;
+}
+
+// ---------------------------------------------------------------------------
+// Build all controls from params
+// ---------------------------------------------------------------------------
+const sliders = {};
+
+function buildVisibilityControls() {
+  const activity = document.getElementById('activity').value;
+  const hidden = HIDDEN_BY_DEFAULT[activity] || new Set();
+
+  // Reset visibility for current activity
+  visibleTypes = {};
+  for (const t of ALL_CORRIDOR_TYPES) {
+    visibleTypes[t] = !hidden.has(t);
+  }
+
+  const container = document.getElementById('visibility-section');
+  container.innerHTML = '';
+  for (const t of ALL_CORRIDOR_TYPES) {
+    const row = document.createElement('div');
+    row.className = 'checkbox-row';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = `vis-${t}`;
+    cb.checked = visibleTypes[t];
+    cb.addEventListener('change', () => {
+      visibleTypes[t] = cb.checked;
+      rerenderFromCache();
+    });
+
+    const lbl = document.createElement('label');
+    lbl.htmlFor = `vis-${t}`;
+    lbl.textContent = t;
+
+    row.append(cb, lbl);
+    container.appendChild(row);
+  }
+}
+
+function buildControls() {
+  if (!params) return;
+
+  buildVisibilityControls();
+
+  // Dimension weights
+  const wc = document.getElementById('weights-section');
+  wc.innerHTML = '';
+  sliders.weights = {};
+  for (const [k, v] of Object.entries(params.weights)) {
+    sliders.weights[k] = makeSlider(wc, `weights.${k}`, k, v, 0, 1, 0.01);
+  }
+
+  // Flow params
+  const fc = document.getElementById('flow-section');
+  fc.innerHTML = '';
+  sliders.flow = {};
+  const flowDefs = {
+    lengthLogDenominator: { label: 'Length log denom', min: 50, max: 2000, step: 10 },
+    lengthLogNumerator: { label: 'Length log numer', min: 1000, max: 50000, step: 100 },
+    stopDecayRate: { label: 'Stop decay rate', min: 0, max: 1, step: 0.01 },
+    lengthBlend: { label: 'Length blend', min: 0, max: 1, step: 0.01 },
+  };
+  for (const [k, def] of Object.entries(flowDefs)) {
+    sliders.flow[k] = makeSlider(fc, `flow.${k}`, def.label, params.flow[k], def.min, def.max, def.step);
+  }
+
+  // Safety sub-weights
+  const sc = document.getElementById('safety-section');
+  sc.innerHTML = '';
+  sliders.safety = {};
+  for (const [k, v] of Object.entries(params.safety)) {
+    sliders.safety[k] = makeSlider(sc, `safety.${k}`, k, v, 0, 1, 0.01);
+  }
+
+  // Character scores
+  const cc = document.getElementById('character-section');
+  cc.innerHTML = '';
+  sliders.character = {};
+  for (const [k, v] of Object.entries(params.characterScores)) {
+    sliders.character[k] = makeSlider(cc, `character.${k}`, k, v, 0, 1, 0.01);
+  }
+
+  // Surface scores
+  const sfc = document.getElementById('surface-section');
+  sfc.innerHTML = '';
+  sliders.surface = {};
+  for (const [k, v] of Object.entries(params.surfaceScores)) {
+    sliders.surface[k] = makeSlider(sfc, `surface.${k}`, k, v, 0, 1, 0.01);
+  }
+
+  // Surface confidence min factor
+  const cfc = document.getElementById('confidence-section');
+  cfc.innerHTML = '';
+  sliders.confidence = {};
+  sliders.confidence.surfaceConfidenceMinFactor = makeSlider(
+    cfc, 'surfaceConfidenceMinFactor', 'Min factor', params.surfaceConfidenceMinFactor, 0, 1, 0.01
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Read params from sliders
+// ---------------------------------------------------------------------------
+function readParams() {
+  // Dimension weights — normalize to sum to 1
+  const rawWeights = {};
+  let wSum = 0;
+  for (const [k, slider] of Object.entries(sliders.weights)) {
+    rawWeights[k] = Number(slider.value);
+    wSum += rawWeights[k];
+  }
+  const weights = {};
+  for (const k of Object.keys(rawWeights)) {
+    weights[k] = wSum > 0 ? rawWeights[k] / wSum : 0.25;
+  }
+
+  // Safety sub-weights — normalize to sum to 1
+  const rawSafety = {};
+  let sSum = 0;
+  for (const [k, slider] of Object.entries(sliders.safety)) {
+    rawSafety[k] = Number(slider.value);
+    sSum += rawSafety[k];
+  }
+  const safety = {};
+  for (const k of Object.keys(rawSafety)) {
+    safety[k] = sSum > 0 ? rawSafety[k] / sSum : 0.25;
+  }
+
+  // Flow params (not normalized)
+  const flow = {};
+  for (const [k, slider] of Object.entries(sliders.flow)) {
+    flow[k] = Number(slider.value);
+  }
+
+  // Character scores (not normalized)
+  const characterScores = {};
+  for (const [k, slider] of Object.entries(sliders.character)) {
+    characterScores[k] = Number(slider.value);
+  }
+
+  // Surface scores (not normalized)
+  const surfaceScores = {};
+  for (const [k, slider] of Object.entries(sliders.surface)) {
+    surfaceScores[k] = Number(slider.value);
+  }
+
+  return {
+    weights,
+    flow,
+    safety,
+    surfaceScores,
+    characterScores,
+    surfaceConfidenceMinFactor: Number(sliders.confidence.surfaceConfidenceMinFactor.value),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Scoring
+// ---------------------------------------------------------------------------
+function scheduleScore() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(doScore, 150);
+}
+
+async function doScore() {
+  const activity = document.getElementById('activity').value;
+  const currentParams = readParams();
+
+  document.getElementById('status').textContent = 'Scoring...';
+  const start = performance.now();
+
+  try {
+    const res = await fetch('/api/score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activityType: activity, params: currentParams }),
+    });
+    const geojson = await res.json();
+    const elapsed = Math.round(performance.now() - start);
+
+    if (geojson.error) {
+      document.getElementById('footer').textContent = `Error: ${geojson.error}`;
+      return;
+    }
+
+    lastGeoJson = geojson;
+    renderGeoJson(geojson);
+
+    const meta = geojson._meta || {};
+    const visibleCount = corridorLayer ? corridorLayer.getLayers().length : meta.corridorCount;
+    document.getElementById('footer').textContent =
+      `Showing ${visibleCount} of ${meta.corridorCount ?? '?'} corridors | Scored in ${meta.scoringTimeMs ?? '?'}ms (server) / ${elapsed}ms (round-trip)`;
+    document.getElementById('status').textContent = 'Ready';
+  } catch (err) {
+    document.getElementById('footer').textContent = `Fetch error: ${err.message}`;
+    document.getElementById('status').textContent = 'Error';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Map rendering
+// ---------------------------------------------------------------------------
+function rerenderFromCache() {
+  if (!lastGeoJson) return;
+  renderGeoJson(lastGeoJson);
+  const meta = lastGeoJson._meta || {};
+  const visibleCount = corridorLayer ? corridorLayer.getLayers().length : 0;
+  document.getElementById('footer').textContent =
+    `Showing ${visibleCount} of ${meta.corridorCount ?? '?'} corridors`;
+}
+
+function renderGeoJson(geojson) {
+  if (corridorLayer) {
+    map.removeLayer(corridorLayer);
+  }
+
+  // Filter out hidden corridor types
+  const filtered = {
+    ...geojson,
+    features: geojson.features.filter(f => visibleTypes[f.properties.corridorType] !== false),
+  };
+
+  corridorLayer = L.geoJSON(filtered, {
+    style: (feature) => ({
+      color: feature.properties.stroke || '#888',
+      weight: feature.properties['stroke-width'] || 3,
+      opacity: feature.properties['stroke-opacity'] || 0.85,
+    }),
+    onEachFeature: (feature, layer) => {
+      layer.on('click', () => {
+        const p = feature.properties;
+        const barHtml = (score, label) => {
+          const pct = Math.round((score ?? 0) * 100);
+          const color = scoreToColor(score ?? 0);
+          return `<div><span class="bar" style="width:${pct}px;background:${color}"></span>${label}: ${(score ?? 0).toFixed(3)}</div>`;
+        };
+        const html = `
+          <div class="score-popup">
+            <div class="name">${p.name || p.id}</div>
+            <div>Type: ${p.corridorType} | ${p.lengthKm} km</div>
+            <div>Road: ${p.roadClass} | Surface: ${p.surface} (${p.surfaceConfidence})</div>
+            <div>Infra: ${p.infraContinuity} | Sep: ${p.separationContinuity} | Stops: ${p.stopDensityPerKm}/km</div>
+            <hr style="margin:4px 0;border-color:#555">
+            ${barHtml(p.scoreOverall, 'Overall')}
+            ${barHtml(p.scoreFlow, 'Flow')}
+            ${barHtml(p.scoreSafety, 'Safety')}
+            ${barHtml(p.scoreSurface, 'Surface')}
+            ${barHtml(p.scoreCharacter, 'Character')}
+          </div>
+        `;
+        layer.bindPopup(html, { maxWidth: 350 }).openPopup();
+      });
+    },
+  }).addTo(map);
+}
+
+function scoreToColor(score) {
+  const s = Math.max(0, Math.min(1, score));
+  let r, g;
+  if (s < 0.5) {
+    const t = s / 0.5;
+    r = 204;
+    g = Math.round(34 + t * 170);
+  } else {
+    const t = (s - 0.5) / 0.5;
+    r = Math.round(204 - t * 170);
+    g = 204;
+  }
+  return '#' + r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + '22';
+}
+
+// ---------------------------------------------------------------------------
+// Collapsible sections
+// ---------------------------------------------------------------------------
+document.querySelectorAll('.section-header').forEach(header => {
+  header.addEventListener('click', () => {
+    header.classList.toggle('open');
+    const body = header.nextElementSibling;
+    body.classList.toggle('open');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+async function init() {
+  // Initialize map (will re-center once we get network stats)
+  map = L.map('map').setView([42.96, -85.67], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
+  }).addTo(map);
+
+  // Load network stats for centering
+  try {
+    const statsRes = await fetch('/api/network-stats');
+    const stats = await statsRes.json();
+    if (stats.center) {
+      map.setView([stats.center.lat, stats.center.lng], 12);
+    }
+  } catch (e) {
+    console.warn('Could not load network stats:', e);
+  }
+
+  // Load defaults
+  await loadDefaults();
+
+  // Wire activity change
+  document.getElementById('activity').addEventListener('change', loadDefaults);
+
+  // Wire reset button
+  document.getElementById('reset-btn').addEventListener('click', loadDefaults);
+
+  // Wire save button
+  document.getElementById('save-btn').addEventListener('click', saveToCode);
+}
+
+async function loadDefaults() {
+  const activity = document.getElementById('activity').value;
+  document.getElementById('status').textContent = 'Loading defaults...';
+
+  try {
+    const res = await fetch(`/api/defaults?activity=${activity}`);
+    params = await res.json();
+    buildControls();
+    await doScore();
+  } catch (err) {
+    document.getElementById('status').textContent = `Error: ${err.message}`;
+  }
+}
+
+async function saveToCode() {
+  const activity = document.getElementById('activity').value;
+  const currentParams = readParams();
+  const btn = document.getElementById('save-btn');
+
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activityType: activity, params: currentParams }),
+    });
+    const result = await res.json();
+
+    if (result.error) {
+      document.getElementById('footer').textContent = `Save error: ${result.error}`;
+      btn.textContent = 'Save Failed';
+    } else {
+      document.getElementById('footer').textContent = `Saved ${activity} defaults to scoring.ts`;
+      btn.textContent = 'Saved!';
+    }
+  } catch (err) {
+    document.getElementById('footer').textContent = `Save error: ${err.message}`;
+    btn.textContent = 'Save Failed';
+  }
+
+  setTimeout(() => {
+    btn.textContent = 'Save to Code';
+    btn.disabled = false;
+  }, 2000);
+}
+
+init();
+</script>
+</body>
+</html>
