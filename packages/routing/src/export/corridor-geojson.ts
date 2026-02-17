@@ -161,7 +161,7 @@ function corridorToFeature(
   };
 
   if (attributes.averageSpeedLimit != null) {
-    properties.speedLimit = attributes.averageSpeedLimit;
+    properties["speedLimit"] = attributes.averageSpeedLimit;
   }
 
   // Add score properties when scoreActivity is set
@@ -169,18 +169,18 @@ function corridorToFeature(
     scoreActivity && corridor.scores?.[scoreActivity];
 
   if (score) {
-    properties.scoreOverall = Math.round(score.overall * 1000) / 1000;
-    properties.scoreFlow = Math.round(score.flow * 1000) / 1000;
-    properties.scoreSafety = Math.round(score.safety * 1000) / 1000;
-    properties.scoreSurface = Math.round(score.surface * 1000) / 1000;
-    properties.scoreCharacter = Math.round(score.character * 1000) / 1000;
+    properties["scoreOverall"] = Math.round(score.overall * 1000) / 1000;
+    properties["scoreFlow"] = Math.round(score.flow * 1000) / 1000;
+    properties["scoreSafety"] = Math.round(score.safety * 1000) / 1000;
+    properties["scoreSurface"] = Math.round(score.surface * 1000) / 1000;
+    properties["scoreCharacter"] = Math.round(score.character * 1000) / 1000;
   }
 
   if (includeStyle) {
     const color = score
       ? scoreToColor(score.overall)
       : CORRIDOR_TYPE_COLORS[corridor.type] ?? "#888888";
-    properties.stroke = color;
+    properties["stroke"] = color;
     properties["stroke-width"] = strokeWidthForType(corridor.type);
     properties["stroke-opacity"] = 0.85;
   }
@@ -223,7 +223,7 @@ function connectorToFeature(
   };
 
   if (includeStyle) {
-    properties.stroke = CONNECTOR_COLOR;
+    properties["stroke"] = CONNECTOR_COLOR;
     properties["stroke-width"] = 1;
     properties["stroke-opacity"] = 0.4;
   }
