@@ -288,3 +288,67 @@ describe("corridorsByTypeToGeoJson", () => {
     expect(byType.size).toBe(0);
   });
 });
+
+describe("score-colored export", () => {
+  it("adds score properties when scoreActivity is set", () => {
+    const corridor = makeCorridor();
+    corridor.scores = {
+      "road-cycling": {
+        overall: 0.75,
+        flow: 0.8,
+        safety: 0.6,
+        surface: 0.9,
+        character: 0.7,
+      },
+    };
+    const network = makeNetwork([corridor]);
+    const geojson = corridorNetworkToGeoJson(network, {
+      scoreActivity: "road-cycling",
+      includeConnectors: false,
+    });
+
+    const props = geojson.features[0]!.properties;
+    expect(props["scoreOverall"]).toBe(0.75);
+    expect(props["scoreFlow"]).toBe(0.8);
+    expect(props["scoreSafety"]).toBe(0.6);
+    expect(props["scoreSurface"]).toBe(0.9);
+    expect(props["scoreCharacter"]).toBe(0.7);
+  });
+
+  it("uses score-based gradient color instead of type color", () => {
+    const corridor = makeCorridor({ type: "arterial" });
+    corridor.scores = {
+      "road-cycling": {
+        overall: 0.5,
+        flow: 0.5,
+        safety: 0.5,
+        surface: 0.5,
+        character: 0.5,
+      },
+    };
+    const network = makeNetwork([corridor]);
+
+    // Without score: should use arterial color
+    const noScore = corridorNetworkToGeoJson(network, { includeConnectors: false });
+    expect(noScore.features[0]!.properties["stroke"]).toBe("#e74c3c");
+
+    // With score: should use HSL gradient (score 0.5 = yellow = hsl(60,...))
+    const withScore = corridorNetworkToGeoJson(network, {
+      scoreActivity: "road-cycling",
+      includeConnectors: false,
+    });
+    expect(withScore.features[0]!.properties["stroke"]).toBe("hsl(60, 80%, 45%)");
+  });
+
+  it("falls back to type color when corridor has no score for activity", () => {
+    const corridor = makeCorridor({ type: "trail" });
+    // No scores set
+    const network = makeNetwork([corridor]);
+    const geojson = corridorNetworkToGeoJson(network, {
+      scoreActivity: "road-cycling",
+      includeConnectors: false,
+    });
+
+    expect(geojson.features[0]!.properties["stroke"]).toBe("#2ecc71");
+  });
+});

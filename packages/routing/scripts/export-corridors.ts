@@ -1,6 +1,6 @@
 /**
  * Export corridor network as color-coded GeoJSON.
- * Usage: npx tsx scripts/export-corridors.ts [--corridors-only] [--type trail,path] [--activity cycling|running|walking] [--score=cycling|running|walking]
+ * Usage: npx tsx scripts/export-corridors.ts [--corridors-only] [--type trail,path] [--activity road-cycling|gravel-cycling|running|walking] [--score=road-cycling|gravel-cycling|running|walking]
  */
 import { ingestOsm } from "../src/ingestion/index.js";
 import { buildCorridors } from "../src/corridors/index.js";

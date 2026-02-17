@@ -26,7 +26,7 @@ import {
   deriveName,
   buildCorridorGeometry,
 } from "./corridor-attributes.js";
-import { scoreCorridors } from "./scoring.js";
+import { scoreCorridor } from "./scoring.js";
 
 /** Options for corridor construction */
 export interface CorridorBuilderOptions {
@@ -217,10 +217,13 @@ export async function buildCorridors(
     connector.corridorIds = adjIds.filter((id) => corridors.has(id));
   }
 
-  // Step 6: Score corridors for all activity types
+  // Step 6: Score corridors for all activity types (single pass)
   const activityTypes: ActivityType[] = ["road-cycling", "gravel-cycling", "running", "walking"];
-  for (const activity of activityTypes) {
-    scoreCorridors(corridors, activity);
+  for (const corridor of corridors.values()) {
+    corridor.scores = {};
+    for (const activity of activityTypes) {
+      corridor.scores[activity] = scoreCorridor(corridor, activity);
+    }
   }
 
   // Step 7: Compute stats

@@ -281,7 +281,7 @@ export function scoreCorridor(
     w.surface * surface +
     w.character * character;
 
-  return { overall, flow, safety, surface, character };
+  return { overall: Math.max(0, Math.min(1, overall)), flow, safety, surface, character };
 }
 
 /**
