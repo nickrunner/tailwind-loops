@@ -1,0 +1,29 @@
+{
+  "activityType": "road-cycling",
+  "weights": { "flow": 0.3, "safety": 0.2, "surface": 0.25, "character": 0.25 },
+  "flow": {
+    "lengthLogDenominator": 300,
+    "lengthLogNumerator": 10000,
+    "stopDecayRate": 0.2,
+    "lengthBlend": 0.6
+  },
+  "safety": { "infrastructure": 0.3, "separation": 0.3, "speedLimit": 0.2, "roadClass": 0.2 },
+  "surfaceScores": {
+    "asphalt": 1,
+    "concrete": 0.9,
+    "paved": 0.9,
+    "gravel": 0,
+    "dirt": 0,
+    "unpaved": 0,
+    "unknown": 0.3
+  },
+  "characterScores": {
+    "quiet-road": 1,
+    "collector": 0.7,
+    "mixed": 0.5,
+    "arterial": 0.3,
+    "trail": 0.3,
+    "path": 0.1
+  },
+  "surfaceConfidenceMinFactor": 0.5
+}

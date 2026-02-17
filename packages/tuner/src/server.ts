@@ -15,7 +15,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,7 +30,11 @@ import {
 } from "@tailwind-loops/builder";
 import type { OsmNode, OsmWay, BoundingBox } from "@tailwind-loops/builder";
 import {
-  getDefaultScoringParams,
+  loadBaseConfig,
+  loadProfileConfig,
+  listProfiles,
+  saveBaseConfig,
+  saveProfileConfig,
   scoreCorridorWithParams,
   corridorNetworkToGeoJson,
 } from "@tailwind-loops/routing";
@@ -44,7 +48,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PUBLIC_DIR = resolve(__dirname, "../public");
 const PBF_PATH = resolve(__dirname, "../../../data/grand-rapids.osm.pbf");
-const SCORING_TS_PATH = resolve(__dirname, "../../routing/src/corridors/scoring.ts");
 
 const PORT = parseInt(process.env["PORT"] ?? "3456", 10);
 
@@ -228,8 +231,24 @@ function sendJson(res: ServerResponse, data: unknown, status = 200): void {
 
 function handleDefaults(req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
+  const profileName = url.searchParams.get("profile");
+
+  if (profileName) {
+    try {
+      const result = loadProfileConfig(profileName);
+      sendJson(res, result);
+    } catch (err) {
+      sendJson(res, { error: String(err) }, 404);
+    }
+    return;
+  }
+
   const activity = (url.searchParams.get("activity") ?? "road-cycling") as ActivityType;
-  sendJson(res, getDefaultScoringParams(activity));
+  sendJson(res, loadBaseConfig(activity));
+}
+
+function handleProfiles(_req: IncomingMessage, res: ServerResponse): void {
+  sendJson(res, listProfiles());
 }
 
 function handleScore(req: IncomingMessage, res: ServerResponse): void {
@@ -281,80 +300,52 @@ function handleSave(req: IncomingMessage, res: ServerResponse): void {
   });
   req.on("end", () => {
     try {
-      const { activityType, params } = JSON.parse(body) as {
+      const { activityType, params, profileName, asBase } = JSON.parse(body) as {
+        activityType: ActivityType;
+        params: ScoringParams;
+        profileName?: string;
+        asBase?: boolean;
+      };
+
+      if (profileName && !asBase) {
+        // Save as profile override
+        saveProfileConfig(profileName, params, activityType, "");
+        console.log(`Saved profile "${profileName}" (extends ${activityType})`);
+        sendJson(res, { saved: true, profileName, activityType });
+      } else {
+        // Save as base config
+        saveBaseConfig(activityType, params);
+        console.log(`Saved ${activityType} base config to JSON`);
+        sendJson(res, { saved: true, activityType });
+      }
+    } catch (err) {
+      sendJson(res, { error: String(err) }, 500);
+    }
+  });
+}
+
+function handleSaveAs(req: IncomingMessage, res: ServerResponse): void {
+  let body = "";
+  req.on("data", (chunk: Buffer) => {
+    body += chunk.toString();
+  });
+  req.on("end", () => {
+    try {
+      const { name, description, activityType, params } = JSON.parse(body) as {
+        name: string;
+        description: string;
         activityType: ActivityType;
         params: ScoringParams;
       };
 
-      const source = readFileSync(SCORING_TS_PATH, "utf-8");
-
-      const startMarker = "// @tuner-defaults-start";
-      const endMarker = "// @tuner-defaults-end";
-      const startIdx = source.indexOf(startMarker);
-      const endIdx = source.indexOf(endMarker);
-
-      if (startIdx === -1 || endIdx === -1) {
-        sendJson(res, { error: "Could not find tuner-defaults markers in scoring.ts" }, 500);
+      if (!name) {
+        sendJson(res, { error: "Profile name is required" }, 400);
         return;
       }
 
-      // Parse the existing DEFAULT_SCORING_PARAMS from the marked block
-      const before = source.slice(0, startIdx);
-      const after = source.slice(endIdx + endMarker.length);
-      const existingBlock = source.slice(
-        startIdx + startMarker.length,
-        endIdx,
-      );
-
-      // Extract the existing record by evaluating the structure
-      // We'll rebuild the full record, updating only the specified activity
-      const allActivities: ActivityType[] = ["road-cycling", "gravel-cycling", "running", "walking"];
-
-      // Get current defaults for all activities
-      const allParams: Record<string, ScoringParams> = {};
-      for (const act of allActivities) {
-        allParams[act] = getDefaultScoringParams(act);
-      }
-      // Override the one being saved
-      allParams[activityType] = params;
-
-      // Generate the new block
-      const indent = "  ";
-      const lines: string[] = [];
-      lines.push(`${startMarker}`);
-      lines.push(`const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {`);
-
-      for (const act of allActivities) {
-        const p = allParams[act]!;
-        const key = act === "running" || act === "walking" ? act : `"${act}"`;
-        lines.push(`${indent}${key}: {`);
-        lines.push(`${indent}${indent}weights: { flow: ${p.weights.flow}, safety: ${p.weights.safety}, surface: ${p.weights.surface}, character: ${p.weights.character} },`);
-        lines.push(`${indent}${indent}flow: { lengthLogDenominator: ${p.flow.lengthLogDenominator}, lengthLogNumerator: ${p.flow.lengthLogNumerator}, stopDecayRate: ${p.flow.stopDecayRate}, lengthBlend: ${p.flow.lengthBlend} },`);
-        lines.push(`${indent}${indent}safety: { infrastructure: ${p.safety.infrastructure}, separation: ${p.safety.separation}, speedLimit: ${p.safety.speedLimit}, roadClass: ${p.safety.roadClass} },`);
-
-        const surfaceEntries = Object.entries(p.surfaceScores).map(([k, v]) => `${k}: ${v}`).join(", ");
-        lines.push(`${indent}${indent}surfaceScores: { ${surfaceEntries} },`);
-
-        const charEntries = Object.entries(p.characterScores)
-          .map(([k, v]) => {
-            const qk = k.includes("-") ? `"${k}"` : k;
-            return `${qk}: ${v}`;
-          })
-          .join(", ");
-        lines.push(`${indent}${indent}characterScores: { ${charEntries} },`);
-
-        lines.push(`${indent}${indent}surfaceConfidenceMinFactor: ${p.surfaceConfidenceMinFactor},`);
-        lines.push(`${indent}},`);
-      }
-
-      lines.push(`};`);
-      lines.push(`${endMarker}`);
-
-      const newSource = before + lines.join("\n") + after;
-      writeFileSync(SCORING_TS_PATH, newSource, "utf-8");
-
-      console.log(`Saved ${activityType} defaults to scoring.ts`);
-      sendJson(res, { saved: true, activityType });
+      saveProfileConfig(name, params, activityType, description);
+      console.log(`Saved new profile "${name}" (extends ${activityType})`);
+      sendJson(res, { saved: true, name, activityType });
     } catch (err) {
       sendJson(res, { error: String(err) }, 500);
     }
@@ -464,10 +455,14 @@ const server = createServer((req, res) => {
     serveStatic(res, "index.html", "text/html; charset=utf-8");
   } else if (url.startsWith("/api/defaults")) {
     handleDefaults(req, res);
+  } else if (url.startsWith("/api/profiles")) {
+    handleProfiles(req, res);
   } else if (url === "/api/score" && method === "POST") {
     handleScore(req, res);
   } else if (url === "/api/save" && method === "POST") {
     handleSave(req, res);
+  } else if (url === "/api/save-as" && method === "POST") {
+    handleSaveAs(req, res);
   } else if (url === "/api/network-stats") {
     handleNetworkStats(req, res);
   } else if (url === "/api/load-location" && method === "POST") {

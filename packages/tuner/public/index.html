@@ -62,6 +62,12 @@
       <option value="walking">Walking</option>
     </select>
   </label>
+  <label>
+    Profile:
+    <select id="profile">
+      <option value="">(base)</option>
+    </select>
+  </label>
   <span class="status" id="status">Loading...</span>
 </div>
 
@@ -99,7 +105,8 @@
     </div>
 
     <button class="btn" id="reset-btn">Reset Defaults</button>
-    <button class="btn" id="save-btn" style="background:#1a4a1a;border-color:#2d7a2d">Save to Code</button>
+    <button class="btn" id="save-btn" style="background:#1a4a1a;border-color:#2d7a2d">Save</button>
+    <button class="btn" id="save-as-btn" style="background:#1a3a4a;border-color:#2d6a7a">Save as New Profile</button>
   </div>
 
   <div id="map"></div>
@@ -118,6 +125,8 @@ let map = null;
 let lastGeoJson = null;
 let moveDebounceTimer = null;
 let loadInFlight = false;
+let currentProfile = null; // null = base, string = profile name
+let profileList = [];
 
 const ALL_CORRIDOR_TYPES = ['trail', 'path', 'quiet-road', 'collector', 'arterial', 'mixed'];
 
@@ -475,20 +484,68 @@ async function init() {
     console.warn('Could not load network stats:', e);
   }
 
+  // Load profiles list
+  await loadProfiles();
+
   // Load defaults
   await loadDefaults();
 
   // Wire activity change
-  document.getElementById('activity').addEventListener('change', loadDefaults);
+  document.getElementById('activity').addEventListener('change', () => {
+    currentProfile = null;
+    updateProfileDropdown();
+    loadDefaults();
+  });
+
+  // Wire profile change
+  document.getElementById('profile').addEventListener('change', () => {
+    const val = document.getElementById('profile').value;
+    currentProfile = val || null;
+    loadDefaults();
+  });
 
   // Wire reset button
-  document.getElementById('reset-btn').addEventListener('click', loadDefaults);
+  document.getElementById('reset-btn').addEventListener('click', () => {
+    currentProfile = null;
+    updateProfileDropdown();
+    loadDefaults();
+  });
 
   // Wire save button
-  document.getElementById('save-btn').addEventListener('click', saveToCode);
+  document.getElementById('save-btn').addEventListener('click', saveConfig);
+
+  // Wire save-as button
+  document.getElementById('save-as-btn').addEventListener('click', saveAsProfile);
 
   // Auto-load corridors when the map view changes
   map.on('moveend', onMoveEnd);
+}
+
+async function loadProfiles() {
+  try {
+    const res = await fetch('/api/profiles');
+    profileList = await res.json();
+    updateProfileDropdown();
+  } catch (e) {
+    console.warn('Could not load profiles:', e);
+  }
+}
+
+function updateProfileDropdown() {
+  const activity = document.getElementById('activity').value;
+  const select = document.getElementById('profile');
+  select.innerHTML = '<option value="">(base)</option>';
+
+  for (const p of profileList) {
+    if (p.extends === activity) {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      opt.title = p.description;
+      if (p.name === currentProfile) opt.selected = true;
+      select.appendChild(opt);
+    }
+  }
 }
 
 async function loadDefaults() {
@@ -496,8 +553,22 @@ async function loadDefaults() {
   document.getElementById('status').textContent = 'Loading defaults...';
 
   try {
-    const res = await fetch(`/api/defaults?activity=${activity}`);
-    params = await res.json();
+    let url;
+    if (currentProfile) {
+      url = `/api/defaults?profile=${encodeURIComponent(currentProfile)}`;
+    } else {
+      url = `/api/defaults?activity=${activity}`;
+    }
+    const res = await fetch(url);
+    const data = await res.json();
+
+    // If profile response, update activity dropdown to match the base
+    if (data._profile) {
+      document.getElementById('activity').value = data._profile.extends;
+      updateProfileDropdown();
+    }
+
+    params = data;
     buildControls();
     await doScore();
   } catch (err) {
@@ -505,7 +576,7 @@ async function loadDefaults() {
   }
 }
 
-async function saveToCode() {
+async function saveConfig() {
   const activity = document.getElementById('activity').value;
   const currentParams = readParams();
   const btn = document.getElementById('save-btn');
@@ -514,10 +585,17 @@ async function saveToCode() {
   btn.disabled = true;
 
   try {
+    const payload = {
+      activityType: activity,
+      params: currentParams,
+      profileName: currentProfile || undefined,
+      asBase: !currentProfile,
+    };
+
     const res = await fetch('/api/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ activityType: activity, params: currentParams }),
+      body: JSON.stringify(payload),
     });
     const result = await res.json();
 
@@ -525,7 +603,8 @@ async function saveToCode() {
       document.getElementById('footer').textContent = `Save error: ${result.error}`;
       btn.textContent = 'Save Failed';
     } else {
-      document.getElementById('footer').textContent = `Saved ${activity} defaults to scoring.ts`;
+      const target = currentProfile ? `profile "${currentProfile}"` : `${activity} base config`;
+      document.getElementById('footer').textContent = `Saved ${target}`;
       btn.textContent = 'Saved!';
     }
   } catch (err) {
@@ -534,7 +613,49 @@ async function saveToCode() {
   }
 
   setTimeout(() => {
-    btn.textContent = 'Save to Code';
+    btn.textContent = 'Save';
+    btn.disabled = false;
+  }, 2000);
+}
+
+async function saveAsProfile() {
+  const name = prompt('Profile name (e.g. "weekend-warrior"):');
+  if (!name) return;
+  const description = prompt('Short description (optional):') || '';
+
+  const activity = document.getElementById('activity').value;
+  const currentParams = readParams();
+  const btn = document.getElementById('save-as-btn');
+
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/save-as', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, activityType: activity, params: currentParams }),
+    });
+    const result = await res.json();
+
+    if (result.error) {
+      document.getElementById('footer').textContent = `Save error: ${result.error}`;
+      btn.textContent = 'Save Failed';
+    } else {
+      document.getElementById('footer').textContent = `Saved new profile "${name}"`;
+      btn.textContent = 'Saved!';
+      // Reload profiles and select the new one
+      await loadProfiles();
+      currentProfile = name;
+      updateProfileDropdown();
+    }
+  } catch (err) {
+    document.getElementById('footer').textContent = `Save error: ${err.message}`;
+    btn.textContent = 'Save Failed';
+  }
+
+  setTimeout(() => {
+    btn.textContent = 'Save as New Profile';
     btn.disabled = false;
   }, 2000);
 }

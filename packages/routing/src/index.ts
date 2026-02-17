@@ -16,6 +16,7 @@ export { ingestOsm, buildCorridors } from "@tailwind-loops/builder";
 
 // Scoring
 export * from "./corridors/scoring.js";
+export * from "./corridors/scoring-config.js";
 
 // Search
 export * from "./search/index.js";

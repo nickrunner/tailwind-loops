@@ -1,0 +1,12 @@
+{
+  "name": "pro-cyclist",
+  "description": "Performance-oriented road cyclist — penalizes paths, higher flow weight",
+  "extends": "road-cycling",
+  "overrides": {
+    "weights": { "flow": 0.4, "safety": 0.15 },
+    "characterScores": {
+      "path": 0.0,
+      "trail": 0.1
+    }
+  }
+}

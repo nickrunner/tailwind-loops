@@ -14,7 +14,14 @@
  * - walking: very permissive, prefer paths and trails.
  */
 
-import type { Corridor, CorridorScore, CorridorType, RoadClass, SurfaceType, ActivityType } from "@tailwind-loops/types";
+import type {
+  Corridor,
+  CorridorScore,
+  CorridorType,
+  RoadClass,
+  SurfaceType,
+  ActivityType
+} from "@tailwind-loops/types";
 
 // ---------------------------------------------------------------------------
 // Parameterized scoring types
@@ -61,7 +68,7 @@ export function scoreFlow(corridor: Corridor): number {
     lengthLogDenominator: 300,
     lengthLogNumerator: 10000,
     stopDecayRate: 0.2,
-    lengthBlend: 0.6,
+    lengthBlend: 0.6
   });
 }
 
@@ -72,7 +79,7 @@ export function scoreFlowWithParams(corridor: Corridor, params: FlowParams): num
   const lengthScore = Math.min(
     1,
     Math.log(1 + lengthMeters / params.lengthLogDenominator) /
-      Math.log(1 + params.lengthLogNumerator / params.lengthLogDenominator),
+      Math.log(1 + params.lengthLogNumerator / params.lengthLogDenominator)
   );
   const stopScore = Math.exp(-params.stopDecayRate * stopDensityPerKm);
 
@@ -127,7 +134,7 @@ export function scoreSafety(corridor: Corridor): number {
     infrastructure: 0.3,
     separation: 0.3,
     speedLimit: 0.2,
-    roadClass: 0.2,
+    roadClass: 0.2
   });
 }
 
@@ -137,7 +144,7 @@ export function scoreSafetyWithParams(corridor: Corridor, params: SafetyParams):
     infrastructureContinuity,
     separationContinuity,
     averageSpeedLimit,
-    predominantRoadClass,
+    predominantRoadClass
   } = corridor.attributes;
 
   return (
@@ -210,22 +217,20 @@ const SURFACE_SCORES: Record<ActivityType, Record<SurfaceType, number>> = {
  * Raw score is scaled by confidence: score * (0.5 + 0.5 * confidence).
  */
 export function scoreSurface(corridor: Corridor, activityType: ActivityType): number {
-  return scoreSurfaceWithParams(
-    corridor,
-    SURFACE_SCORES[activityType],
-    0.5,
-  );
+  return scoreSurfaceWithParams(corridor, SURFACE_SCORES[activityType], 0.5);
 }
 
 /** Parameterized surface scoring. */
 export function scoreSurfaceWithParams(
   corridor: Corridor,
   surfaceScores: Record<SurfaceType, number>,
-  surfaceConfidenceMinFactor: number,
+  surfaceConfidenceMinFactor: number
 ): number {
   const { predominantSurface, surfaceConfidence } = corridor.attributes;
   const rawScore = surfaceScores[predominantSurface] ?? 0.4;
-  return rawScore * (surfaceConfidenceMinFactor + (1 - surfaceConfidenceMinFactor) * surfaceConfidence);
+  return (
+    rawScore * (surfaceConfidenceMinFactor + (1 - surfaceConfidenceMinFactor) * surfaceConfidence)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -293,7 +298,7 @@ export function scoreCharacter(corridor: Corridor, activityType: ActivityType): 
 /** Parameterized character scoring. */
 export function scoreCharacterWithParams(
   corridor: Corridor,
-  characterScores: Record<CorridorType, number>,
+  characterScores: Record<CorridorType, number>
 ): number {
   return characterScores[corridor.type] ?? 0.3;
 }
@@ -340,13 +345,14 @@ export function scoreCorridor(
 }
 
 /** Score a single corridor using fully parameterized scoring. */
-export function scoreCorridorWithParams(
-  corridor: Corridor,
-  params: ScoringParams,
-): CorridorScore {
+export function scoreCorridorWithParams(corridor: Corridor, params: ScoringParams): CorridorScore {
   const flow = scoreFlowWithParams(corridor, params.flow);
   const safety = scoreSafetyWithParams(corridor, params.safety);
-  const surface = scoreSurfaceWithParams(corridor, params.surfaceScores, params.surfaceConfidenceMinFactor);
+  const surface = scoreSurfaceWithParams(
+    corridor,
+    params.surfaceScores,
+    params.surfaceConfidenceMinFactor
+  );
   const character = scoreCharacterWithParams(corridor, params.characterScores);
 
   const w = params.weights;
@@ -377,7 +383,7 @@ export function scoreCorridors(
 export function scoreCorridorsWithParams(
   corridors: Map<string, Corridor>,
   activityType: ActivityType,
-  params: ScoringParams,
+  params: ScoringParams
 ): void {
   for (const corridor of corridors.values()) {
     const score = scoreCorridorWithParams(corridor, params);
@@ -388,45 +394,123 @@ export function scoreCorridorsWithParams(
   }
 }
 
-// @tuner-defaults-start
 const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
   "road-cycling": {
     weights: { flow: 0.3, safety: 0.2, surface: 0.25, character: 0.25 },
-    flow: { lengthLogDenominator: 300, lengthLogNumerator: 10000, stopDecayRate: 0.2, lengthBlend: 0.6 },
+    flow: {
+      lengthLogDenominator: 300,
+      lengthLogNumerator: 10000,
+      stopDecayRate: 0.2,
+      lengthBlend: 0.6
+    },
     safety: { infrastructure: 0.3, separation: 0.3, speedLimit: 0.2, roadClass: 0.2 },
-    surfaceScores: { asphalt: 1, concrete: 0.9, paved: 0.9, gravel: 0, dirt: 0, unpaved: 0, unknown: 0.3 },
-    characterScores: { "quiet-road": 1, collector: 0.7, mixed: 0.5, arterial: 0.3, trail: 0.3, path: 0.1 },
-    surfaceConfidenceMinFactor: 0.5,
+    surfaceScores: {
+      asphalt: 1,
+      concrete: 0.9,
+      paved: 0.9,
+      gravel: 0,
+      dirt: 0,
+      unpaved: 0,
+      unknown: 0.3
+    },
+    characterScores: {
+      "quiet-road": 1,
+      collector: 0.7,
+      mixed: 0.5,
+      arterial: 0.3,
+      trail: 0.3,
+      path: 0.1
+    },
+    surfaceConfidenceMinFactor: 0.5
   },
   "gravel-cycling": {
     weights: { flow: 0.25, safety: 0.2, surface: 0.3, character: 0.25 },
-    flow: { lengthLogDenominator: 300, lengthLogNumerator: 10000, stopDecayRate: 0.2, lengthBlend: 0.6 },
+    flow: {
+      lengthLogDenominator: 300,
+      lengthLogNumerator: 10000,
+      stopDecayRate: 0.2,
+      lengthBlend: 0.6
+    },
     safety: { infrastructure: 0.3, separation: 0.3, speedLimit: 0.2, roadClass: 0.2 },
-    surfaceScores: { gravel: 1, dirt: 0.9, unpaved: 0.8, asphalt: 0.4, concrete: 0.3, paved: 0.4, unknown: 0.4 },
-    characterScores: { trail: 0.17, "quiet-road": 0.8, mixed: 0.7, collector: 0.4, path: 0, arterial: 0.1 },
-    surfaceConfidenceMinFactor: 0.5,
+    surfaceScores: {
+      gravel: 1,
+      dirt: 0.9,
+      unpaved: 0.8,
+      asphalt: 0.4,
+      concrete: 0.3,
+      paved: 0.4,
+      unknown: 0.4
+    },
+    characterScores: {
+      trail: 0.17,
+      "quiet-road": 0.8,
+      mixed: 0.7,
+      collector: 0.4,
+      path: 0,
+      arterial: 0.1
+    },
+    surfaceConfidenceMinFactor: 0.5
   },
   running: {
     weights: { flow: 0.2, safety: 0.3, surface: 0.25, character: 0.25 },
-    flow: { lengthLogDenominator: 300, lengthLogNumerator: 10000, stopDecayRate: 0.2, lengthBlend: 0.6 },
+    flow: {
+      lengthLogDenominator: 300,
+      lengthLogNumerator: 10000,
+      stopDecayRate: 0.2,
+      lengthBlend: 0.6
+    },
     safety: { infrastructure: 0.3, separation: 0.3, speedLimit: 0.2, roadClass: 0.2 },
-    surfaceScores: { dirt: 0.9, gravel: 0.8, asphalt: 0.7, paved: 0.7, concrete: 0.6, unpaved: 0.6, unknown: 0.4 },
-    characterScores: { trail: 1, path: 0.9, "quiet-road": 0.7, collector: 0.3, arterial: 0.1, mixed: 0.2 },
-    surfaceConfidenceMinFactor: 0.5,
+    surfaceScores: {
+      dirt: 0.9,
+      gravel: 0.8,
+      asphalt: 0.7,
+      paved: 0.7,
+      concrete: 0.6,
+      unpaved: 0.6,
+      unknown: 0.4
+    },
+    characterScores: {
+      trail: 1,
+      path: 0.9,
+      "quiet-road": 0.7,
+      collector: 0.3,
+      arterial: 0.1,
+      mixed: 0.2
+    },
+    surfaceConfidenceMinFactor: 0.5
   },
   walking: {
     weights: { flow: 0.15, safety: 0.35, surface: 0.2, character: 0.3 },
-    flow: { lengthLogDenominator: 300, lengthLogNumerator: 10000, stopDecayRate: 0.2, lengthBlend: 0.6 },
+    flow: {
+      lengthLogDenominator: 300,
+      lengthLogNumerator: 10000,
+      stopDecayRate: 0.2,
+      lengthBlend: 0.6
+    },
     safety: { infrastructure: 0.3, separation: 0.3, speedLimit: 0.2, roadClass: 0.2 },
-    surfaceScores: { paved: 0.8, asphalt: 0.7, concrete: 0.7, gravel: 0.8, dirt: 0.8, unpaved: 0.6, unknown: 0.5 },
-    characterScores: { path: 1, trail: 0.9, "quiet-road": 0.8, collector: 0.3, arterial: 0.1, mixed: 0.2 },
-    surfaceConfidenceMinFactor: 0.5,
-  },
+    surfaceScores: {
+      paved: 0.8,
+      asphalt: 0.7,
+      concrete: 0.7,
+      gravel: 0.8,
+      dirt: 0.8,
+      unpaved: 0.6,
+      unknown: 0.5
+    },
+    characterScores: {
+      path: 1,
+      trail: 0.9,
+      "quiet-road": 0.8,
+      collector: 0.3,
+      arterial: 0.1,
+      mixed: 0.2
+    },
+    surfaceConfidenceMinFactor: 0.5
+  }
 };
-// @tuner-defaults-end
 
-/** Get the default ScoringParams for a given activity type. */
-export function getDefaultScoringParams(activityType: ActivityType): ScoringParams {
+/** Get the hardcoded default ScoringParams for a given activity type. */
+export function getHardcodedDefaults(activityType: ActivityType): ScoringParams {
   const p = DEFAULT_SCORING_PARAMS[activityType];
   return {
     weights: { ...p.weights },
@@ -434,6 +518,9 @@ export function getDefaultScoringParams(activityType: ActivityType): ScoringPara
     safety: { ...p.safety },
     surfaceScores: { ...p.surfaceScores },
     characterScores: { ...p.characterScores },
-    surfaceConfidenceMinFactor: p.surfaceConfidenceMinFactor,
+    surfaceConfidenceMinFactor: p.surfaceConfidenceMinFactor
   };
 }
+
+/** @deprecated Use getHardcodedDefaults or loadBaseConfig from scoring-config. */
+export const getDefaultScoringParams = getHardcodedDefaults;
