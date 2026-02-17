@@ -127,7 +127,12 @@ export async function buildCorridors(
         startNodeId: chain.startNodeId,
         endNodeId: chain.endNodeId,
         geometry,
+        oneWay: false, // placeholder
       });
+
+      // Determine directionality: corridor is one-way if its edges are one-way
+      const firstEdge = graph.edges.get(chain.edgeIds[0]!);
+      const isOneWay = firstEdge?.attributes.oneWay ?? false;
 
       const corridor: Corridor = {
         id,
@@ -138,6 +143,7 @@ export async function buildCorridors(
         startNodeId: chain.startNodeId,
         endNodeId: chain.endNodeId,
         geometry,
+        oneWay: isOneWay,
       };
 
       corridors.set(id, corridor);
@@ -303,7 +309,7 @@ function buildConnectorAttributes(
 }
 
 export { edgeCompatibility } from "./edge-compatibility.js";
-export { buildChains } from "./chain-builder.js";
+export { buildChains, getCounterpartEdgeId } from "./chain-builder.js";
 export type { EdgeChain } from "./chain-builder.js";
 export {
   aggregateAttributes,

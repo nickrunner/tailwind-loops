@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildChains } from "./chain-builder.js";
+import { buildChains, getCounterpartEdgeId } from "./chain-builder.js";
 import type { EdgeChain } from "./chain-builder.js";
 import type {
   Graph,
@@ -699,5 +699,141 @@ describe("buildChains", () => {
       expect(chains).toHaveLength(1);
       expect(chains[0]!.totalLengthMeters).toBe(400);
     });
+  });
+
+  describe("bidirectional deduplication", () => {
+    it("produces one chain for bidirectional edges (not two)", () => {
+      // A -- B with forward (:f) and reverse (:r) edges
+      const nodes = [
+        makeNode("a", 0, 0),
+        makeNode("b", 0, 0.001),
+      ];
+      const edges = [
+        makeEdge("100:0:f", "a", "b", [
+          { lat: 0, lng: 0 },
+          { lat: 0, lng: 0.001 },
+        ]),
+        makeEdge("100:0:r", "b", "a", [
+          { lat: 0, lng: 0.001 },
+          { lat: 0, lng: 0 },
+        ]),
+      ];
+      const graph = makeGraph(nodes, edges);
+      const chains = buildChains(graph);
+
+      // Should produce only ONE chain, not two
+      expect(chains).toHaveLength(1);
+      expect(chains[0]!.edgeIds).toHaveLength(1);
+    });
+
+    it("produces one chain for multi-edge bidirectional road", () => {
+      // A -- B -- C with forward and reverse edges for each segment
+      const nodes = [
+        makeNode("a", 0, 0),
+        makeNode("b", 0, 0.001),
+        makeNode("c", 0, 0.002),
+      ];
+      const edges = [
+        makeEdge("100:0:f", "a", "b", [
+          { lat: 0, lng: 0 },
+          { lat: 0, lng: 0.001 },
+        ]),
+        makeEdge("100:0:r", "b", "a", [
+          { lat: 0, lng: 0.001 },
+          { lat: 0, lng: 0 },
+        ]),
+        makeEdge("100:1:f", "b", "c", [
+          { lat: 0, lng: 0.001 },
+          { lat: 0, lng: 0.002 },
+        ]),
+        makeEdge("100:1:r", "c", "b", [
+          { lat: 0, lng: 0.002 },
+          { lat: 0, lng: 0.001 },
+        ]),
+      ];
+      const graph = makeGraph(nodes, edges);
+      const chains = buildChains(graph);
+
+      // Should produce ONE chain with 2 forward edges (not 2 chains)
+      expect(chains).toHaveLength(1);
+      expect(chains[0]!.edgeIds).toHaveLength(2);
+    });
+
+    it("still works correctly for one-way edges (no suffix)", () => {
+      // A -> B -> C (one-way, no counterparts)
+      const nodes = [
+        makeNode("a", 0, 0),
+        makeNode("b", 0, 0.001),
+        makeNode("c", 0, 0.002),
+      ];
+      const edges = [
+        makeEdge("100:0", "a", "b", [
+          { lat: 0, lng: 0 },
+          { lat: 0, lng: 0.001 },
+        ], { oneWay: true }),
+        makeEdge("100:1", "b", "c", [
+          { lat: 0, lng: 0.001 },
+          { lat: 0, lng: 0.002 },
+        ], { oneWay: true }),
+      ];
+      const graph = makeGraph(nodes, edges);
+      const chains = buildChains(graph);
+
+      expect(chains).toHaveLength(1);
+      expect(chains[0]!.edgeIds).toHaveLength(2);
+      expect(chains[0]!.edgeIds).toEqual(["100:0", "100:1"]);
+    });
+
+    it("handles mix of one-way and bidirectional edges", () => {
+      // A -> B (one-way) then B -- C (bidirectional)
+      // Should not chain them together (different oneWay attributes reduce compatibility)
+      // but each should produce exactly one chain
+      const nodes = [
+        makeNode("a", 0, 0),
+        makeNode("b", 0, 0.001),
+        makeNode("c", 0, 0.002),
+      ];
+      const edges = [
+        makeEdge("100:0", "a", "b", [
+          { lat: 0, lng: 0 },
+          { lat: 0, lng: 0.001 },
+        ], { oneWay: true }),
+        makeEdge("200:0:f", "b", "c", [
+          { lat: 0, lng: 0.001 },
+          { lat: 0, lng: 0.002 },
+        ]),
+        makeEdge("200:0:r", "c", "b", [
+          { lat: 0, lng: 0.002 },
+          { lat: 0, lng: 0.001 },
+        ]),
+      ];
+      const graph = makeGraph(nodes, edges);
+      const chains = buildChains(graph);
+
+      // Total edges consumed should be 2 (one-way + one forward), not 3
+      const totalEdges = chains.reduce((sum, c) => sum + c.edgeIds.length, 0);
+      expect(totalEdges).toBeLessThanOrEqual(3);
+      // The reverse edge should NOT appear in any chain
+      const allIds = chains.flatMap(c => c.edgeIds);
+      expect(allIds).not.toContain("200:0:r");
+    });
+  });
+});
+
+describe("getCounterpartEdgeId", () => {
+  it("returns :r for :f suffix", () => {
+    expect(getCounterpartEdgeId("100:0:f")).toBe("100:0:r");
+  });
+
+  it("returns :f for :r suffix", () => {
+    expect(getCounterpartEdgeId("100:0:r")).toBe("100:0:f");
+  });
+
+  it("returns null for one-way edge (no suffix)", () => {
+    expect(getCounterpartEdgeId("100:0")).toBeNull();
+  });
+
+  it("returns null for edge with other suffix", () => {
+    expect(getCounterpartEdgeId("100:0:x")).toBeNull();
   });
 });

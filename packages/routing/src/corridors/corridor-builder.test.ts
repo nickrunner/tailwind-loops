@@ -129,6 +129,7 @@ function makeCorridor(overrides: Partial<Corridor>): Corridor {
     startNodeId: "a",
     endNodeId: "b",
     geometry: [],
+    oneWay: false,
     ...overrides,
   };
 }

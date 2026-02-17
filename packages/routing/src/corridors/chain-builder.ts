@@ -11,6 +11,32 @@ import type { CorridorBuilderOptions } from "./index.js";
 import { DEFAULT_CORRIDOR_OPTIONS } from "./index.js";
 import { edgeCompatibility } from "./edge-compatibility.js";
 
+/**
+ * Get the counterpart edge ID for bidirectional edges.
+ * Bidirectional edges use ':f' (forward) and ':r' (reverse) suffixes.
+ * One-way edges have no suffix and return null.
+ */
+export function getCounterpartEdgeId(edgeId: string): string | null {
+  if (edgeId.endsWith(":f")) {
+    return edgeId.slice(0, -2) + ":r";
+  }
+  if (edgeId.endsWith(":r")) {
+    return edgeId.slice(0, -2) + ":f";
+  }
+  return null;
+}
+
+/**
+ * Mark an edge and its bidirectional counterpart as visited.
+ */
+function markVisited(visited: Set<string>, edgeId: string): void {
+  visited.add(edgeId);
+  const counterpart = getCounterpartEdgeId(edgeId);
+  if (counterpart) {
+    visited.add(counterpart);
+  }
+}
+
 /** A chain of contiguous, compatible edges forming a corridor candidate */
 export interface EdgeChain {
   edgeIds: string[];
@@ -107,7 +133,7 @@ export function buildChains(
   for (const [edgeId, edge] of graph.edges) {
     if (visited.has(edgeId)) continue;
 
-    visited.add(edgeId);
+    markVisited(visited, edgeId);
 
     // Start chain with this edge
     const chainEdgeIds: string[] = [edgeId];
@@ -124,7 +150,7 @@ export function buildChains(
         COMPATIBILITY_THRESHOLD
       );
       if (!nextEdge) break;
-      visited.add(nextEdge.id);
+      markVisited(visited, nextEdge.id);
       chainEdgeIds.push(nextEdge.id);
       totalLength += nextEdge.attributes.lengthMeters;
       currentEdge = nextEdge;
@@ -142,7 +168,7 @@ export function buildChains(
         COMPATIBILITY_THRESHOLD
       );
       if (!prevEdge) break;
-      visited.add(prevEdge.id);
+      markVisited(visited, prevEdge.id);
       chainEdgeIds.unshift(prevEdge.id);
       totalLength += prevEdge.attributes.lengthMeters;
       currentEdge = prevEdge;

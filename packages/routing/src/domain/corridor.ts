@@ -60,6 +60,8 @@ export interface Corridor {
   endNodeId: string;
   /** Simplified geometry for display (not all edge points) */
   geometry: Coordinate[];
+  /** Whether this corridor is one-way (directional) or bidirectional */
+  oneWay: boolean;
 }
 
 /**
