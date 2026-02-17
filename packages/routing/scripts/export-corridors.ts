@@ -40,14 +40,15 @@ const types = activity
 
 function getOutputDir(): string {
   const label = activity ?? (types ? types.join("-") : null);
+  const scoreSuffix = scoreActivity ? `-scored-${scoreActivity}` : "";
   if (label && corridorsOnly) {
-    return resolve(DATA_DIR, `corridors-${label}-only`);
+    return resolve(DATA_DIR, `corridors-${label}-only${scoreSuffix}`);
   } else if (label) {
-    return resolve(DATA_DIR, `corridors-${label}`);
+    return resolve(DATA_DIR, `corridors-${label}${scoreSuffix}`);
   } else if (corridorsOnly) {
-    return resolve(DATA_DIR, "corridors-only");
+    return resolve(DATA_DIR, `corridors-only${scoreSuffix}`);
   } else {
-    return resolve(DATA_DIR, "corridors-all");
+    return resolve(DATA_DIR, `corridors-all${scoreSuffix}`);
   }
 }
 
