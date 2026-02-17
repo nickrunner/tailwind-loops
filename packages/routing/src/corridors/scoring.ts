@@ -4,6 +4,14 @@
  * Scores corridors along multiple dimensions (flow, safety, surface, character)
  * to produce an overall score per activity type. These scores drive route search
  * by encoding how desirable each corridor is for a given activity.
+ *
+ * Activity types:
+ * - road-cycling: serious road cyclists. Prefer open, quiet, scenic roads.
+ *   Avoid gravel/unpaved. Trails/cycleways are NOT preferred (ped traffic, stops).
+ * - gravel-cycling: gravel/adventure riders. Strongly prefer unpaved surfaces.
+ *   Trails and quiet roads are great.
+ * - running: prefer trails, paths, and quiet roads with softer surfaces.
+ * - walking: very permissive, prefer paths and trails.
  */
 
 import type { Corridor, CorridorScore, CorridorType } from "../domain/corridor.js";
@@ -24,7 +32,6 @@ export function scoreFlow(corridor: Corridor): number {
   const { lengthMeters, stopDensityPerKm } = corridor.attributes;
 
   // Length component: log curve scaled so 200m≈0.07, 1km≈0.46, 3km≈0.72, 10km≈0.95
-  // f(x) = ln(1 + x/300) / ln(1 + 10000/300)
   const lengthScore = Math.min(
     1,
     Math.log(1 + lengthMeters / 300) / Math.log(1 + 10000 / 300),
@@ -53,7 +60,7 @@ function scoreSpeedLimit(speedLimit: number | undefined): number {
   for (const [threshold, score] of SPEED_LIMIT_SCORES) {
     if (speedLimit <= threshold) return score;
   }
-  return 0.1; // 80+
+  return 0.1;
 }
 
 const ROAD_CLASS_SAFETY: Record<string, number> = {
@@ -99,38 +106,55 @@ export function scoreSafety(corridor: Corridor): number {
 // Surface scoring
 // ---------------------------------------------------------------------------
 
-const SURFACE_SCORES_CYCLING: Record<SurfaceType, number> = {
+/**
+ * Road cycling: MUST be paved. Gravel/dirt/unpaved are disqualifying (score 0).
+ */
+const SURFACE_SCORES_ROAD_CYCLING: Record<SurfaceType, number> = {
   asphalt: 1.0,
   concrete: 0.9,
   paved: 0.9,
-  gravel: 0.3,
-  dirt: 0.1,
-  unpaved: 0.2,
+  gravel: 0.0,
+  dirt: 0.0,
+  unpaved: 0.0,
+  unknown: 0.3,
+};
+
+/**
+ * Gravel cycling: strongly prefers gravel and unpaved. Paved is OK but not ideal.
+ */
+const SURFACE_SCORES_GRAVEL_CYCLING: Record<SurfaceType, number> = {
+  gravel: 1.0,
+  dirt: 0.9,
+  unpaved: 0.8,
+  asphalt: 0.4,
+  concrete: 0.3,
+  paved: 0.4,
   unknown: 0.4,
 };
 
 const SURFACE_SCORES_RUNNING: Record<SurfaceType, number> = {
-  asphalt: 0.7,
-  concrete: 0.7,
-  paved: 0.7,
-  gravel: 0.8,
   dirt: 0.9,
+  gravel: 0.8,
+  asphalt: 0.7,
+  paved: 0.7,
+  concrete: 0.6,
   unpaved: 0.6,
   unknown: 0.4,
 };
 
 const SURFACE_SCORES_WALKING: Record<SurfaceType, number> = {
+  paved: 0.8,
   asphalt: 0.7,
   concrete: 0.7,
-  paved: 0.8,
   gravel: 0.8,
-  dirt: 0.9,
+  dirt: 0.8,
   unpaved: 0.6,
   unknown: 0.5,
 };
 
 const SURFACE_SCORES: Record<ActivityType, Record<SurfaceType, number>> = {
-  cycling: SURFACE_SCORES_CYCLING,
+  "road-cycling": SURFACE_SCORES_ROAD_CYCLING,
+  "gravel-cycling": SURFACE_SCORES_GRAVEL_CYCLING,
   running: SURFACE_SCORES_RUNNING,
   walking: SURFACE_SCORES_WALKING,
 };
@@ -153,13 +177,30 @@ export function scoreSurface(
 // Character scoring
 // ---------------------------------------------------------------------------
 
-const CHARACTER_SCORES_CYCLING: Record<CorridorType, number> = {
+/**
+ * Road cycling: quiet, open, scenic roads are king. Trails/cycleways are
+ * actually undesirable (ped traffic, frequent stops, speed limits).
+ * Collectors and quiet roads with good pavement are ideal.
+ */
+const CHARACTER_SCORES_ROAD_CYCLING: Record<CorridorType, number> = {
+  "quiet-road": 1.0,
+  collector: 0.7,
+  arterial: 0.3,
+  trail: 0.3,
+  path: 0.1,
+  mixed: 0.2,
+};
+
+/**
+ * Gravel cycling: trails and quiet roads are great. Prefers off-road character.
+ */
+const CHARACTER_SCORES_GRAVEL_CYCLING: Record<CorridorType, number> = {
   trail: 1.0,
   "quiet-road": 0.8,
-  collector: 0.5,
-  path: 0.4,
-  arterial: 0.2,
+  path: 0.6,
+  collector: 0.4,
   mixed: 0.3,
+  arterial: 0.1,
 };
 
 const CHARACTER_SCORES_RUNNING: Record<CorridorType, number> = {
@@ -181,7 +222,8 @@ const CHARACTER_SCORES_WALKING: Record<CorridorType, number> = {
 };
 
 const CHARACTER_SCORES: Record<ActivityType, Record<CorridorType, number>> = {
-  cycling: CHARACTER_SCORES_CYCLING,
+  "road-cycling": CHARACTER_SCORES_ROAD_CYCLING,
+  "gravel-cycling": CHARACTER_SCORES_GRAVEL_CYCLING,
   running: CHARACTER_SCORES_RUNNING,
   walking: CHARACTER_SCORES_WALKING,
 };
@@ -211,7 +253,8 @@ export interface ScoringWeights {
 
 /** Default scoring weights per activity type */
 export const DEFAULT_SCORING_WEIGHTS: Record<ActivityType, ScoringWeights> = {
-  cycling: { flow: 0.3, safety: 0.25, surface: 0.2, character: 0.25 },
+  "road-cycling": { flow: 0.3, safety: 0.2, surface: 0.25, character: 0.25 },
+  "gravel-cycling": { flow: 0.25, safety: 0.2, surface: 0.3, character: 0.25 },
   running: { flow: 0.2, safety: 0.3, surface: 0.25, character: 0.25 },
   walking: { flow: 0.15, safety: 0.35, surface: 0.2, character: 0.3 },
 };

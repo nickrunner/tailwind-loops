@@ -146,7 +146,7 @@ describe("scoreSurface", () => {
         surfaceConfidence: 1.0,
       },
     });
-    expect(scoreSurface(corridor, "cycling")).toBeGreaterThan(0.9);
+    expect(scoreSurface(corridor, "road-cycling")).toBeGreaterThan(0.9);
   });
 
   it("gravel scores <0.4 for cycling", () => {
@@ -157,7 +157,8 @@ describe("scoreSurface", () => {
         surfaceConfidence: 1.0,
       },
     });
-    expect(scoreSurface(corridor, "cycling")).toBeLessThan(0.4);
+    // Road cycling must avoid gravel — score should be 0
+    expect(scoreSurface(corridor, "road-cycling")).toBe(0.0);
   });
 
   it("dirt scores high for running", () => {
@@ -197,8 +198,8 @@ describe("scoreSurface", () => {
         surfaceConfidence: 0.2,
       },
     });
-    expect(scoreSurface(lowConf, "cycling")).toBeLessThan(
-      scoreSurface(highConf, "cycling"),
+    expect(scoreSurface(lowConf, "road-cycling")).toBeLessThan(
+      scoreSurface(highConf, "road-cycling"),
     );
   });
 
@@ -228,14 +229,19 @@ describe("scoreSurface", () => {
 // ─── scoreCharacter ─────────────────────────────────────────────────────────
 
 describe("scoreCharacter", () => {
-  it("trail scores 1.0 for cycling", () => {
-    const corridor = makeCorridor({ type: "trail" });
-    expect(scoreCharacter(corridor, "cycling")).toBe(1.0);
+  it("quiet-road scores 1.0 for road cycling", () => {
+    const corridor = makeCorridor({ type: "quiet-road" });
+    expect(scoreCharacter(corridor, "road-cycling")).toBe(1.0);
   });
 
-  it("arterial scores <0.2 for all activities", () => {
+  it("trail scores 1.0 for gravel cycling", () => {
+    const corridor = makeCorridor({ type: "trail" });
+    expect(scoreCharacter(corridor, "gravel-cycling")).toBe(1.0);
+  });
+
+  it("arterial scores low for running and walking", () => {
     const corridor = makeCorridor({ type: "arterial" });
-    const activities: ActivityType[] = ["cycling", "running", "walking"];
+    const activities: ActivityType[] = ["running", "walking"];
     for (const activity of activities) {
       expect(scoreCharacter(corridor, activity)).toBeLessThanOrEqual(0.2);
     }
@@ -250,7 +256,7 @@ describe("scoreCharacter", () => {
       "arterial",
       "mixed",
     ];
-    const activities: ActivityType[] = ["cycling", "running", "walking"];
+    const activities: ActivityType[] = ["road-cycling", "gravel-cycling", "running", "walking"];
     for (const type of types) {
       for (const activity of activities) {
         const corridor = makeCorridor({ type });
@@ -267,7 +273,7 @@ describe("scoreCharacter", () => {
 describe("scoreCorridor", () => {
   it("returns all sub-score fields", () => {
     const corridor = makeCorridor({});
-    const result = scoreCorridor(corridor, "cycling");
+    const result = scoreCorridor(corridor, "road-cycling");
     expect(result).toHaveProperty("overall");
     expect(result).toHaveProperty("flow");
     expect(result).toHaveProperty("safety");
@@ -278,14 +284,14 @@ describe("scoreCorridor", () => {
   it("overall equals flow when weights={flow:1, others:0}", () => {
     const corridor = makeCorridor({});
     const weights = { flow: 1, safety: 0, surface: 0, character: 0 };
-    const result = scoreCorridor(corridor, "cycling", weights);
+    const result = scoreCorridor(corridor, "road-cycling", weights);
     expect(result.overall).toBeCloseTo(result.flow, 10);
   });
 
   it("overall equals safety when weights={safety:1, others:0}", () => {
     const corridor = makeCorridor({});
     const weights = { flow: 0, safety: 1, surface: 0, character: 0 };
-    const result = scoreCorridor(corridor, "cycling", weights);
+    const result = scoreCorridor(corridor, "road-cycling", weights);
     expect(result.overall).toBeCloseTo(result.safety, 10);
   });
 
@@ -317,8 +323,8 @@ describe("scoreCorridor", () => {
         averageSpeedLimit: 70,
       },
     });
-    const trailScore = scoreCorridor(trail, "cycling");
-    const arterialScore = scoreCorridor(arterial, "cycling");
+    const trailScore = scoreCorridor(trail, "road-cycling");
+    const arterialScore = scoreCorridor(arterial, "road-cycling");
     expect(trailScore.overall).toBeGreaterThan(arterialScore.overall + 0.3);
   });
 });
@@ -332,13 +338,13 @@ describe("scoreCorridors", () => {
     corridors.set("c2", makeCorridor({ id: "c2", type: "arterial" }));
     corridors.set("c3", makeCorridor({ id: "c3", type: "quiet-road" }));
 
-    scoreCorridors(corridors, "cycling");
+    scoreCorridors(corridors, "road-cycling");
 
     for (const corridor of corridors.values()) {
       expect(corridor.scores).toBeDefined();
-      expect(corridor.scores!.cycling).toBeDefined();
-      expect(corridor.scores!.cycling!.overall).toBeGreaterThanOrEqual(0);
-      expect(corridor.scores!.cycling!.overall).toBeLessThanOrEqual(1);
+      expect(corridor.scores!['road-cycling']).toBeDefined();
+      expect(corridor.scores!['road-cycling']!.overall).toBeGreaterThanOrEqual(0);
+      expect(corridor.scores!['road-cycling']!.overall).toBeLessThanOrEqual(1);
     }
   });
 
@@ -346,13 +352,13 @@ describe("scoreCorridors", () => {
     const corridors = new Map<string, Corridor>();
     corridors.set("c1", makeCorridor({ id: "c1" }));
 
-    scoreCorridors(corridors, "cycling");
+    scoreCorridors(corridors, "road-cycling");
     scoreCorridors(corridors, "running");
 
     const c = corridors.get("c1")!;
-    expect(c.scores!.cycling).toBeDefined();
+    expect(c.scores!['road-cycling']).toBeDefined();
     expect(c.scores!.running).toBeDefined();
-    expect(c.scores!.cycling!.overall).not.toBe(c.scores!.running!.overall);
+    expect(c.scores!['road-cycling']!.overall).not.toBe(c.scores!.running!.overall);
   });
 });
 
@@ -360,7 +366,7 @@ describe("scoreCorridors", () => {
 
 describe("DEFAULT_SCORING_WEIGHTS", () => {
   it("weights sum to 1.0 for each activity", () => {
-    const activities: ActivityType[] = ["cycling", "running", "walking"];
+    const activities: ActivityType[] = ["road-cycling", "gravel-cycling", "running", "walking"];
     for (const activity of activities) {
       const w = DEFAULT_SCORING_WEIGHTS[activity];
       const sum = w.flow + w.safety + w.surface + w.character;

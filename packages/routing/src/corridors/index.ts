@@ -218,7 +218,7 @@ export async function buildCorridors(
   }
 
   // Step 6: Score corridors for all activity types
-  const activityTypes: ActivityType[] = ["cycling", "running", "walking"];
+  const activityTypes: ActivityType[] = ["road-cycling", "gravel-cycling", "running", "walking"];
   for (const activity of activityTypes) {
     scoreCorridors(corridors, activity);
   }

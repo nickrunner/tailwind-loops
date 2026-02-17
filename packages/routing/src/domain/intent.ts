@@ -12,7 +12,11 @@ import type { CorridorType } from "./corridor.js";
 import type { SurfaceType } from "./graph.js";
 
 /** The activity type being routed for */
-export type ActivityType = "cycling" | "running" | "walking";
+export type ActivityType =
+  | "road-cycling"
+  | "gravel-cycling"
+  | "running"
+  | "walking";
 
 /** How tolerant is the user of certain conditions? */
 export type Tolerance = "avoid" | "tolerate" | "prefer" | "require";
@@ -71,7 +75,8 @@ export interface Constraints {
  */
 export const CORRIDOR_TYPES_BY_ACTIVITY: Record<ActivityType, CorridorType[]> =
   {
-    cycling: ["trail", "quiet-road", "collector", "arterial", "mixed"],
+    "road-cycling": ["quiet-road", "collector", "arterial", "mixed"],
+    "gravel-cycling": ["trail", "quiet-road", "collector", "mixed"],
     running: ["trail", "path", "quiet-road"],
     walking: ["trail", "path", "quiet-road"],
   };
