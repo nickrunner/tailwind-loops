@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { graphToGeoJson } from "./geojson.js";
 import type { Graph, GraphNode, GraphEdge, EdgeAttributes, SurfaceClassification, Infrastructure } from "../domain/index.js";
 
-function makeSurface(surface = "paved" as const, confidence = 0.6): SurfaceClassification {
+function makeSurface(surface: SurfaceClassification["surface"] = "paved", confidence = 0.6): SurfaceClassification {
   return {
     surface,
     confidence,
@@ -62,8 +62,8 @@ describe("graphToGeoJson", () => {
     expect(result.type).toBe("FeatureCollection");
     expect(result.features).toHaveLength(1);
     expect(result.features[0]!.geometry.type).toBe("LineString");
-    expect(result.features[0]!.properties.roadClass).toBe("residential");
-    expect(result.features[0]!.properties.surface).toBe("paved");
+    expect(result.features[0]!.properties['roadClass']).toBe("residential");
+    expect(result.features[0]!.properties['surface']).toBe("paved");
   });
 
   it("uses [lng, lat] coordinate order", () => {
@@ -83,7 +83,7 @@ describe("graphToGeoJson", () => {
     ]);
     const result = graphToGeoJson(graph, { roadClasses: ["cycleway"] });
     expect(result.features).toHaveLength(1);
-    expect(result.features[0]!.properties.roadClass).toBe("cycleway");
+    expect(result.features[0]!.properties['roadClass']).toBe("cycleway");
   });
 
   it("filters by surface type", () => {
@@ -93,7 +93,7 @@ describe("graphToGeoJson", () => {
     ]);
     const result = graphToGeoJson(graph, { surfaceTypes: ["gravel"] });
     expect(result.features).toHaveLength(1);
-    expect(result.features[0]!.properties.surface).toBe("gravel");
+    expect(result.features[0]!.properties['surface']).toBe("gravel");
   });
 
   it("deduplicates bidirectional edges", () => {
@@ -108,7 +108,7 @@ describe("graphToGeoJson", () => {
   it("includes nodes when requested", () => {
     const graph = makeGraph([makeEdge("e1", "n1", "n2")]);
     const result = graphToGeoJson(graph, { includeNodes: true });
-    const nodeFeatures = result.features.filter((f) => f.properties.featureType === "node");
+    const nodeFeatures = result.features.filter((f) => f.properties['featureType'] === "node");
     expect(nodeFeatures.length).toBeGreaterThanOrEqual(1);
     expect(nodeFeatures[0]!.geometry.type).toBe("Point");
   });
