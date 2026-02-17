@@ -322,23 +322,25 @@ function buildConnectorAttributes(
   let hasSignal = false;
   let hasStop = false;
 
-  // Collect all unique node IDs in this connector
-  const nodeIds = new Set<string>();
   for (const edgeId of edgeIds) {
     const edge = graph.edges.get(edgeId)!;
     totalLength += edge.attributes.lengthMeters;
     if (MAJOR_ROAD_CLASSES.has(edge.attributes.roadClass)) {
       crossesMajorRoad = true;
     }
-    nodeIds.add(edge.fromNodeId);
-    nodeIds.add(edge.toNodeId);
+    // Use edge-level counts (includes intermediate OSM nodes)
+    if ((edge.attributes.trafficSignalCount ?? 0) > 0) hasSignal = true;
+    if ((edge.attributes.stopSignCount ?? 0) > 0) hasStop = true;
   }
 
-  // Check all nodes for stop signs and signals
-  for (const nodeId of nodeIds) {
-    const node = graph.nodes.get(nodeId);
-    if (node?.hasSignal) hasSignal = true;
-    if (node?.hasStop) hasStop = true;
+  // Also check endpoint graph nodes (they carry tags from the split-point OSM nodes)
+  if (edgeIds.length > 0) {
+    const firstEdge = graph.edges.get(edgeIds[0]!)!;
+    const lastEdge = graph.edges.get(edgeIds[edgeIds.length - 1]!)!;
+    const startNode = graph.nodes.get(firstEdge.fromNodeId);
+    const endNode = graph.nodes.get(lastEdge.toNodeId);
+    if (startNode?.hasSignal || endNode?.hasSignal) hasSignal = true;
+    if (startNode?.hasStop || endNode?.hasStop) hasStop = true;
   }
 
   // Crossing difficulty factors in signals/stops

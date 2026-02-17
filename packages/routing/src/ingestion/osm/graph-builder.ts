@@ -147,10 +147,16 @@ export async function buildGraphFromOsm(
       const startWayCoord = wayCoords[startIdx]!;
       const endWayCoord = wayCoords[endIdx]!;
 
-      // Build geometry for this segment
+      // Build geometry for this segment and count stops/signals on all nodes
       const geometry: Coordinate[] = [];
+      let stopSignCount = 0;
+      let trafficSignalCount = 0;
       for (let j = startIdx; j <= endIdx; j++) {
         geometry.push(wayCoords[j]!.coord);
+        const nodeOsm = osmNodes.get(wayCoords[j]!.nodeId);
+        const hw = nodeOsm?.tags?.["highway"];
+        if (hw === "stop") stopSignCount++;
+        if (hw === "traffic_signals") trafficSignalCount++;
       }
 
       // Calculate length
@@ -194,6 +200,8 @@ export async function buildGraphFromOsm(
         lanes,
         speedLimit,
         name,
+        ...(stopSignCount > 0 && { stopSignCount }),
+        ...(trafficSignalCount > 0 && { trafficSignalCount }),
       };
 
       // Create edge(s)

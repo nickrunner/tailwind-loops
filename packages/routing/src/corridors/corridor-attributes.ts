@@ -33,7 +33,7 @@ export function aggregateAttributes(
   let weightedSpeedLimit = 0;
   let speedLimitLength = 0;
   let turnsCount = 0;
-  const stopNodes = new Set<string>();
+  let totalStopControls = 0;
 
   for (let i = 0; i < edgeIds.length; i++) {
     const edge = graph.edges.get(edgeIds[i]!)!;
@@ -65,15 +65,10 @@ export function aggregateAttributes(
       speedLimitLength += len;
     }
 
-    // Count stop signs and signals at edge endpoints
-    const fromNode = graph.nodes.get(edge.fromNodeId);
-    const toNode = graph.nodes.get(edge.toNodeId);
-    if (fromNode?.hasStop || fromNode?.hasSignal) {
-      stopNodes.add(edge.fromNodeId);
-    }
-    if (toNode?.hasStop || toNode?.hasSignal) {
-      stopNodes.add(edge.toNodeId);
-    }
+    // Count stop signs and traffic signals from edge-level counts
+    // (includes intermediate OSM nodes, not just endpoints)
+    totalStopControls += (edge.attributes.stopSignCount ?? 0)
+      + (edge.attributes.trafficSignalCount ?? 0);
 
     // Turns: angle changes > 30 degrees between consecutive edges
     if (i > 0) {
@@ -96,7 +91,7 @@ export function aggregateAttributes(
       speedLimitLength > 0
         ? weightedSpeedLimit / speedLimitLength
         : undefined,
-    stopDensityPerKm: totalLength > 0 ? (stopNodes.size / (totalLength / 1000)) : 0,
+    stopDensityPerKm: totalLength > 0 ? (totalStopControls / (totalLength / 1000)) : 0,
     turnsCount,
   };
 }

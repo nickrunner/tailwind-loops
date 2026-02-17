@@ -119,6 +119,10 @@ export interface EdgeAttributes {
   oneWay: boolean;
   /** Length in meters */
   lengthMeters: number;
+  /** Number of stop signs along this edge (from OSM node tags) */
+  stopSignCount?: number;
+  /** Number of traffic signals along this edge (from OSM node tags) */
+  trafficSignalCount?: number;
 }
 
 /** Convenience accessor for surface type (most common use case) */
