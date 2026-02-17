@@ -15,7 +15,11 @@ import type {
   Connector,
   ConnectorAttributes,
 } from "../domain/corridor.js";
-import { buildChains } from "./chain-builder.js";
+import {
+  buildChains,
+  computeUndirectedDegree,
+  trimDeadEnds,
+} from "./chain-builder.js";
 import {
   aggregateAttributes,
   deriveName,
@@ -36,7 +40,7 @@ export interface CorridorBuilderOptions {
 
 /** Default options for corridor building */
 export const DEFAULT_CORRIDOR_OPTIONS: Required<CorridorBuilderOptions> = {
-  minLengthMeters: 200,
+  minLengthMeters: 1609, // ~1 mile
   maxSpeedDifference: 15,
   allowNameChanges: true,
   maxAngleChange: 45,
@@ -80,7 +84,21 @@ export async function buildCorridors(
   const opts = { ...DEFAULT_CORRIDOR_OPTIONS, ...options };
 
   // Step 1: Build edge chains
-  const chains = buildChains(graph, opts);
+  const rawChains = buildChains(graph, opts);
+
+  // Step 1b: Iteratively trim dead-end edges from chain endpoints.
+  // Each pass: compute degree from surviving chain edges, trim, repeat.
+  // Discarding a dead-end chain (e.g. a service road) may expose new dead ends
+  // on adjacent chains, so we iterate until stable.
+  let chains = rawChains;
+  let prevEdgeCount = -1;
+  while (true) {
+    const totalEdges = chains.reduce((s, c) => s + c.edgeIds.length, 0);
+    if (totalEdges === prevEdgeCount) break;
+    prevEdgeCount = totalEdges;
+    const nodeDegree = computeUndirectedDegree(chains, graph);
+    chains = trimDeadEnds(chains, graph, nodeDegree);
+  }
 
   // Step 2: Separate by length threshold
   const corridors = new Map<string, Corridor>();
@@ -309,7 +327,12 @@ function buildConnectorAttributes(
 }
 
 export { edgeCompatibility } from "./edge-compatibility.js";
-export { buildChains, getCounterpartEdgeId } from "./chain-builder.js";
+export {
+  buildChains,
+  getCounterpartEdgeId,
+  computeUndirectedDegree,
+  trimDeadEnds,
+} from "./chain-builder.js";
 export type { EdgeChain } from "./chain-builder.js";
 export {
   aggregateAttributes,

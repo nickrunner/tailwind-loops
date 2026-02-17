@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildChains, getCounterpartEdgeId } from "./chain-builder.js";
+import {
+  buildChains,
+  getCounterpartEdgeId,
+  computeUndirectedDegree,
+  trimDeadEnds,
+} from "./chain-builder.js";
 import type { EdgeChain } from "./chain-builder.js";
 import type {
   Graph,
@@ -80,6 +85,20 @@ function makeGraph(nodes: GraphNode[], edges: GraphEdge[]): Graph {
 /** Collect all edgeIds across all chains */
 function allEdgeIds(chains: EdgeChain[]): string[] {
   return chains.flatMap((c) => c.edgeIds);
+}
+
+/** Wrap all edges into a single chain for degree computation tests */
+function allEdgesAsChains(graph: Graph): EdgeChain[] {
+  const edgeIds = [...graph.edges.keys()];
+  if (edgeIds.length === 0) return [];
+  const firstEdge = graph.edges.get(edgeIds[0]!)!;
+  const lastEdge = graph.edges.get(edgeIds[edgeIds.length - 1]!)!;
+  return [{
+    edgeIds,
+    startNodeId: firstEdge.fromNodeId,
+    endNodeId: lastEdge.toNodeId,
+    totalLengthMeters: 0,
+  }];
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -835,5 +854,354 @@ describe("getCounterpartEdgeId", () => {
 
   it("returns null for edge with other suffix", () => {
     expect(getCounterpartEdgeId("100:0:x")).toBeNull();
+  });
+});
+
+describe("computeUndirectedDegree", () => {
+  it("prunes dead-end nodes to degree 0", () => {
+    // A -- B (dead ends at both A and B, entire branch pruned)
+    const nodes = [makeNode("A", 0, 0), makeNode("B", 0, 0.001)];
+    const edges = [
+      makeEdge("e1", "A", "B", [
+        { lat: 0, lng: 0 },
+        { lat: 0, lng: 0.001 },
+      ]),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const deg = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    // Both nodes are on a dead-end branch, pruned to 0
+    expect(deg.get("A")).toBe(0);
+    expect(deg.get("B")).toBe(0);
+  });
+
+  it("prunes entire dead-end branch iteratively", () => {
+    // A -- B -- C (linear chain, all dead ends after iterative pruning)
+    const nodes = [
+      makeNode("A", 0, 0),
+      makeNode("B", 0, 0.001),
+      makeNode("C", 0, 0.002),
+    ];
+    const edges = [
+      makeEdge("e1", "A", "B", [
+        { lat: 0, lng: 0 },
+        { lat: 0, lng: 0.001 },
+      ]),
+      makeEdge("e2", "B", "C", [
+        { lat: 0, lng: 0.001 },
+        { lat: 0, lng: 0.002 },
+      ]),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const deg = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    // All pruned: A(deg1)->pruned, B becomes deg1->pruned, C becomes deg0->pruned
+    expect(deg.get("A")).toBe(0);
+    expect(deg.get("B")).toBe(0);
+    expect(deg.get("C")).toBe(0);
+  });
+
+  it("preserves degree at intersection nodes with non-dead-end branches", () => {
+    // Grid intersection: 4 roads meeting at B, each continuing to another intersection
+    //     E
+    //     |
+    // A---B---C
+    //     |
+    //     D
+    // Where A, C, D, E each also connect to further nodes (F, G, H, I)
+    const nodes = [
+      makeNode("A", 0, 0), makeNode("B", 0, 0.001), makeNode("C", 0, 0.002),
+      makeNode("D", -0.001, 0.001), makeNode("E", 0.001, 0.001),
+      makeNode("F", 0, -0.001), makeNode("G", 0, 0.003),
+      makeNode("H", -0.002, 0.001), makeNode("I", 0.002, 0.001),
+    ];
+    const edges = [
+      makeEdge("e1", "A", "B", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }]),
+      makeEdge("e2", "B", "C", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }]),
+      makeEdge("e3", "B", "D", [{ lat: 0, lng: 0.001 }, { lat: -0.001, lng: 0.001 }]),
+      makeEdge("e4", "B", "E", [{ lat: 0, lng: 0.001 }, { lat: 0.001, lng: 0.001 }]),
+      // Extend dead-end nodes into further connections
+      makeEdge("e5", "F", "A", [{ lat: 0, lng: -0.001 }, { lat: 0, lng: 0 }]),
+      makeEdge("e6", "C", "G", [{ lat: 0, lng: 0.002 }, { lat: 0, lng: 0.003 }]),
+      makeEdge("e7", "H", "D", [{ lat: -0.002, lng: 0.001 }, { lat: -0.001, lng: 0.001 }]),
+      makeEdge("e8", "E", "I", [{ lat: 0.001, lng: 0.001 }, { lat: 0.002, lng: 0.001 }]),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const deg = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    // B is at a true intersection with 4 branches, each backed by further connections
+    // After pruning: leaves F,G,H,I are degree 1 -> pruned to 0
+    // Then A,C,D,E become degree 1 -> pruned to 0
+    // Then B becomes degree 0.
+    // To truly preserve B, the branches need cycles or further branching.
+    // For this test, let's verify with a structure that has a cycle:
+    expect(deg.get("B")).toBe(0); // all branches dead-end, so B is pruned too
+  });
+
+  it("preserves nodes in cycles (2-core)", () => {
+    // Triangle: A -- B -- C -- A (cycle, all degree 2, no pruning)
+    const nodes = [
+      makeNode("A", 0, 0),
+      makeNode("B", 0, 0.001),
+      makeNode("C", 0.001, 0.0005),
+    ];
+    const edges = [
+      makeEdge("e1", "A", "B", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }]),
+      makeEdge("e2", "B", "C", [{ lat: 0, lng: 0.001 }, { lat: 0.001, lng: 0.0005 }]),
+      makeEdge("e3", "C", "A", [{ lat: 0.001, lng: 0.0005 }, { lat: 0, lng: 0 }]),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const deg = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    // All nodes in cycle, degree 2, not pruned
+    expect(deg.get("A")).toBe(2);
+    expect(deg.get("B")).toBe(2);
+    expect(deg.get("C")).toBe(2);
+  });
+
+  it("prunes dead-end spur off a cycle", () => {
+    // Triangle A-B-C-A with spur B-D
+    const nodes = [
+      makeNode("A", 0, 0),
+      makeNode("B", 0, 0.001),
+      makeNode("C", 0.001, 0.0005),
+      makeNode("D", 0, 0.002),
+    ];
+    const edges = [
+      makeEdge("e1", "A", "B", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }]),
+      makeEdge("e2", "B", "C", [{ lat: 0, lng: 0.001 }, { lat: 0.001, lng: 0.0005 }]),
+      makeEdge("e3", "C", "A", [{ lat: 0.001, lng: 0.0005 }, { lat: 0, lng: 0 }]),
+      makeEdge("e4", "B", "D", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }]),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const deg = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    // D is dead end, pruned to 0. B loses one neighbor but stays in cycle (degree 2).
+    expect(deg.get("D")).toBe(0);
+    expect(deg.get("B")).toBe(2); // was 3, pruned D, now 2 (still in cycle)
+    expect(deg.get("A")).toBe(2);
+    expect(deg.get("C")).toBe(2);
+  });
+
+  it("does not inflate degree for bidirectional :f/:r edge pairs", () => {
+    // A -- B with forward and reverse edges (on a cycle to avoid full pruning)
+    // Triangle to keep nodes alive: A-B-C-A with bidi A-B
+    const nodes = [
+      makeNode("A", 0, 0),
+      makeNode("B", 0, 0.001),
+      makeNode("C", 0.001, 0.0005),
+    ];
+    const edges = [
+      makeEdge("100:0:f", "A", "B", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }]),
+      makeEdge("100:0:r", "B", "A", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0 }]),
+      makeEdge("e2", "B", "C", [{ lat: 0, lng: 0.001 }, { lat: 0.001, lng: 0.0005 }]),
+      makeEdge("e3", "C", "A", [{ lat: 0.001, lng: 0.0005 }, { lat: 0, lng: 0 }]),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const deg = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    // :f and :r connect same A<->B pair, so degree is 2 (B and C), not 3
+    expect(deg.get("A")).toBe(2);
+    expect(deg.get("B")).toBe(2);
+  });
+});
+
+describe("trimDeadEnds", () => {
+  // All tests use a cycle backbone so 2-core nodes survive pruning.
+  // Dead-end spurs hang off the cycle and get trimmed.
+
+  it("trims dead-end spur from start of chain", () => {
+    // Cycle: B -- C -- E -- B (backbone, all survive pruning)
+    // Spur: A -- B (A is dead end, pruned to 0)
+    // Chain: [A→B, B→C]
+    const nodes = [
+      makeNode("A", 0, -0.001),
+      makeNode("B", 0, 0),
+      makeNode("C", 0, 0.001),
+      makeNode("E", 0.001, 0.0005),
+    ];
+    const edges = [
+      makeEdge("e1", "A", "B", [{ lat: 0, lng: -0.001 }, { lat: 0, lng: 0 }]),
+      makeEdge("e2", "B", "C", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }]),
+      makeEdge("e3", "C", "E", [{ lat: 0, lng: 0.001 }, { lat: 0.001, lng: 0.0005 }]),
+      makeEdge("e4", "E", "B", [{ lat: 0.001, lng: 0.0005 }, { lat: 0, lng: 0 }]),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const nodeDegree = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    const chain: EdgeChain = {
+      edgeIds: ["e1", "e2"],
+      startNodeId: "A",
+      endNodeId: "C",
+      totalLengthMeters: 200,
+    };
+
+    const trimmed = trimDeadEnds([chain], graph, nodeDegree);
+    expect(trimmed).toHaveLength(1);
+    expect(trimmed[0]!.edgeIds).toEqual(["e2"]);
+    expect(trimmed[0]!.startNodeId).toBe("B");
+    expect(trimmed[0]!.endNodeId).toBe("C");
+    expect(trimmed[0]!.totalLengthMeters).toBe(100);
+  });
+
+  it("trims dead-end spur from end of chain", () => {
+    // Cycle: B -- C -- E -- B (backbone)
+    // Spur: C -- D (D is dead end)
+    // Chain: [B→C, C→D]
+    const nodes = [
+      makeNode("B", 0, 0),
+      makeNode("C", 0, 0.001),
+      makeNode("D", 0, 0.002),
+      makeNode("E", 0.001, 0.0005),
+    ];
+    const edges = [
+      makeEdge("e1", "B", "C", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }]),
+      makeEdge("e2", "C", "D", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }]),
+      makeEdge("e3", "C", "E", [{ lat: 0, lng: 0.001 }, { lat: 0.001, lng: 0.0005 }]),
+      makeEdge("e4", "E", "B", [{ lat: 0.001, lng: 0.0005 }, { lat: 0, lng: 0 }]),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const nodeDegree = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    const chain: EdgeChain = {
+      edgeIds: ["e1", "e2"],
+      startNodeId: "B",
+      endNodeId: "D",
+      totalLengthMeters: 200,
+    };
+
+    const trimmed = trimDeadEnds([chain], graph, nodeDegree);
+    expect(trimmed).toHaveLength(1);
+    expect(trimmed[0]!.edgeIds).toEqual(["e1"]);
+    expect(trimmed[0]!.endNodeId).toBe("C");
+    expect(trimmed[0]!.totalLengthMeters).toBe(100);
+  });
+
+  it("trims multi-hop dead-end branch (iterative pruning)", () => {
+    // Cycle: D -- E -- F -- D (backbone)
+    // Multi-hop spur: A -- B -- C -- D (3 dead-end edges)
+    // Chain: [A→B, B→C, C→D, D→E]
+    // After 2-core pruning: A=0, B=0, C=0, D=2, E=2, F=2
+    // Trimming removes A→B, B→C, C→D from start, leaves [D→E]
+    const nodes = [
+      makeNode("A", 0, -0.002),
+      makeNode("B", 0, -0.001),
+      makeNode("C", 0, 0),
+      makeNode("D", 0, 0.001),
+      makeNode("E", 0.001, 0.001),
+      makeNode("F", 0.0005, 0.002),
+    ];
+    const edges = [
+      makeEdge("e1", "A", "B", [{ lat: 0, lng: -0.002 }, { lat: 0, lng: -0.001 }]),
+      makeEdge("e2", "B", "C", [{ lat: 0, lng: -0.001 }, { lat: 0, lng: 0 }]),
+      makeEdge("e3", "C", "D", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }]),
+      makeEdge("e4", "D", "E", [{ lat: 0, lng: 0.001 }, { lat: 0.001, lng: 0.001 }]),
+      makeEdge("e5", "E", "F", [{ lat: 0.001, lng: 0.001 }, { lat: 0.0005, lng: 0.002 }]),
+      makeEdge("e6", "F", "D", [{ lat: 0.0005, lng: 0.002 }, { lat: 0, lng: 0.001 }]),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const nodeDegree = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    const chain: EdgeChain = {
+      edgeIds: ["e1", "e2", "e3", "e4"],
+      startNodeId: "A",
+      endNodeId: "E",
+      totalLengthMeters: 400,
+    };
+
+    const trimmed = trimDeadEnds([chain], graph, nodeDegree);
+    expect(trimmed).toHaveLength(1);
+    // All 3 spur edges trimmed from start, only D→E remains
+    expect(trimmed[0]!.edgeIds).toEqual(["e4"]);
+    expect(trimmed[0]!.startNodeId).toBe("D");
+    expect(trimmed[0]!.endNodeId).toBe("E");
+    expect(trimmed[0]!.totalLengthMeters).toBe(100);
+  });
+
+  it("discards chain entirely consumed by trimming", () => {
+    // A -- B, both dead ends (entire branch pruned to 0)
+    const nodes = [makeNode("A", 0, 0), makeNode("B", 0, 0.001)];
+    const edges = [
+      makeEdge("e1", "A", "B", [
+        { lat: 0, lng: 0 },
+        { lat: 0, lng: 0.001 },
+      ]),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const nodeDegree = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    const chain: EdgeChain = {
+      edgeIds: ["e1"],
+      startNodeId: "A",
+      endNodeId: "B",
+      totalLengthMeters: 100,
+    };
+
+    const trimmed = trimDeadEnds([chain], graph, nodeDegree);
+    expect(trimmed).toHaveLength(0);
+  });
+
+  it("does not trim when no dead ends (cycle)", () => {
+    // Triangle: A -- B -- C -- A (all nodes degree 2, in 2-core)
+    const nodes = [
+      makeNode("A", 0, 0),
+      makeNode("B", 0, 0.001),
+      makeNode("C", 0.001, 0.0005),
+    ];
+    const edges = [
+      makeEdge("e1", "A", "B", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }]),
+      makeEdge("e2", "B", "C", [{ lat: 0, lng: 0.001 }, { lat: 0.001, lng: 0.0005 }]),
+      makeEdge("e3", "C", "A", [{ lat: 0.001, lng: 0.0005 }, { lat: 0, lng: 0 }]),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const nodeDegree = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    const chain: EdgeChain = {
+      edgeIds: ["e1", "e2"],
+      startNodeId: "A",
+      endNodeId: "C",
+      totalLengthMeters: 200,
+    };
+
+    const trimmed = trimDeadEnds([chain], graph, nodeDegree);
+    expect(trimmed).toHaveLength(1);
+    expect(trimmed[0]!.edgeIds).toEqual(["e1", "e2"]);
+    expect(trimmed[0]!.totalLengthMeters).toBe(200);
+  });
+
+  it("recalculates totalLengthMeters after trimming", () => {
+    // Cycle: Y -- Z -- W -- Y (backbone)
+    // Spur: X -- Y (dead end at X)
+    // Chain [X→Y, Y→Z] with different lengths
+    const nodes = [
+      makeNode("X", 0, -0.001),
+      makeNode("Y", 0, 0),
+      makeNode("Z", 0, 0.001),
+      makeNode("W", 0.001, 0.0005),
+    ];
+    const edges = [
+      makeEdge("g1", "X", "Y", [{ lat: 0, lng: -0.001 }, { lat: 0, lng: 0 }],
+        { lengthMeters: 150 }),
+      makeEdge("g2", "Y", "Z", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }],
+        { lengthMeters: 250 }),
+      makeEdge("g3", "Z", "W", [{ lat: 0, lng: 0.001 }, { lat: 0.001, lng: 0.0005 }],
+        { lengthMeters: 100 }),
+      makeEdge("g4", "W", "Y", [{ lat: 0.001, lng: 0.0005 }, { lat: 0, lng: 0 }],
+        { lengthMeters: 100 }),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const nodeDegree = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    const chain: EdgeChain = {
+      edgeIds: ["g1", "g2"],
+      startNodeId: "X",
+      endNodeId: "Z",
+      totalLengthMeters: 400,
+    };
+
+    const trimmed = trimDeadEnds([chain], graph, nodeDegree);
+    expect(trimmed).toHaveLength(1);
+    expect(trimmed[0]!.edgeIds).toEqual(["g2"]);
+    expect(trimmed[0]!.totalLengthMeters).toBe(250);
   });
 });

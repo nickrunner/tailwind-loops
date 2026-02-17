@@ -64,6 +64,18 @@ export interface Constraints {
   minInfrastructureContinuity?: number;
 }
 
+/**
+ * Corridor types relevant for each activity type.
+ * Cycling focuses on roads and trails; running/walking focus on paths, trails, and quiet roads.
+ * Arterials are included for cycling but will be deprioritized via CorridorWeights during routing.
+ */
+export const CORRIDOR_TYPES_BY_ACTIVITY: Record<ActivityType, CorridorType[]> =
+  {
+    cycling: ["trail", "quiet-road", "collector", "arterial", "mixed"],
+    running: ["trail", "path", "quiet-road"],
+    walking: ["trail", "path", "quiet-road"],
+  };
+
 /** The routing policy derived from intent - used by search */
 export interface RoutingPolicy {
   /** Weights for different corridor types (higher = prefer) */

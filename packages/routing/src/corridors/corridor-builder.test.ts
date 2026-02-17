@@ -77,6 +77,8 @@ function makeGraph(nodes: GraphNode[], edges: GraphEdge[]): Graph {
 /**
  * Build a straight east-going road with N edges of given length each.
  * All edges are compatible (same attributes) and collinear.
+ * Adds stub edges at both endpoints (different road class, 90° angle)
+ * so that endpoints are intersections (degree >= 2), not dead ends.
  */
 function makeStraightRoad(
   edgeCount: number,
@@ -108,7 +110,76 @@ function makeStraightRoad(
     );
   }
 
+  // Small triangles at endpoints to create 2-core intersections (survive iterative pruning)
+  nodes.push(makeNode("stub_s1", 0.001, -0.001));
+  nodes.push(makeNode("stub_s2", 0.001, 0.001));
+  edges.push(
+    makeEdge("stub_s1", "n0", "stub_s1",
+      [{ lat: 0, lng: 0 }, { lat: 0.001, lng: -0.001 }],
+      { lengthMeters: 10, roadClass: "track" })
+  );
+  edges.push(
+    makeEdge("stub_s2", "stub_s1", "stub_s2",
+      [{ lat: 0.001, lng: -0.001 }, { lat: 0.001, lng: 0.001 }],
+      { lengthMeters: 10, roadClass: "track" })
+  );
+  edges.push(
+    makeEdge("stub_s3", "stub_s2", "n0",
+      [{ lat: 0.001, lng: 0.001 }, { lat: 0, lng: 0 }],
+      { lengthMeters: 10, roadClass: "track" })
+  );
+
+  const eLng = edgeCount * 0.001;
+  nodes.push(makeNode("stub_e1", 0.001, eLng - 0.001));
+  nodes.push(makeNode("stub_e2", 0.001, eLng + 0.001));
+  edges.push(
+    makeEdge("stub_e1", `n${edgeCount}`, "stub_e1",
+      [{ lat: 0, lng: eLng }, { lat: 0.001, lng: eLng - 0.001 }],
+      { lengthMeters: 10, roadClass: "track" })
+  );
+  edges.push(
+    makeEdge("stub_e2", "stub_e1", "stub_e2",
+      [{ lat: 0.001, lng: eLng - 0.001 }, { lat: 0.001, lng: eLng + 0.001 }],
+      { lengthMeters: 10, roadClass: "track" })
+  );
+  edges.push(
+    makeEdge("stub_e3", "stub_e2", `n${edgeCount}`,
+      [{ lat: 0.001, lng: eLng + 0.001 }, { lat: 0, lng: eLng }],
+      { lengthMeters: 10, roadClass: "track" })
+  );
+
   return { graph: makeGraph(nodes, edges), edgeIds };
+}
+
+/**
+ * Add a small triangle loop at a node so it survives 2-core pruning.
+ * Uses service road class (incompatible with most corridors) and 90° angles.
+ */
+function addTriangleStub(
+  nodeId: string,
+  baseLat: number,
+  baseLng: number,
+  prefix: string,
+  nodes: GraphNode[],
+  edges: GraphEdge[]
+): void {
+  nodes.push(makeNode(`${prefix}1`, baseLat + 0.001, baseLng - 0.001));
+  nodes.push(makeNode(`${prefix}2`, baseLat + 0.001, baseLng + 0.001));
+  edges.push(
+    makeEdge(`${prefix}1`, nodeId, `${prefix}1`,
+      [{ lat: baseLat, lng: baseLng }, { lat: baseLat + 0.001, lng: baseLng - 0.001 }],
+      { lengthMeters: 10, roadClass: "track" })
+  );
+  edges.push(
+    makeEdge(`${prefix}2`, `${prefix}1`, `${prefix}2`,
+      [{ lat: baseLat + 0.001, lng: baseLng - 0.001 }, { lat: baseLat + 0.001, lng: baseLng + 0.001 }],
+      { lengthMeters: 10, roadClass: "track" })
+  );
+  edges.push(
+    makeEdge(`${prefix}3`, `${prefix}2`, nodeId,
+      [{ lat: baseLat + 0.001, lng: baseLng + 0.001 }, { lat: baseLat, lng: baseLng }],
+      { lengthMeters: 10, roadClass: "track" })
+  );
 }
 
 function makeCorridor(overrides: Partial<Corridor>): Corridor {
@@ -352,35 +423,33 @@ describe("classifyCorridor", () => {
 
 describe("buildCorridors", () => {
   it("builds corridors from long chains and connectors from short chains", async () => {
-    // Two separate roads: one long (300m, 3 edges of 100m) and one short (50m, 1 edge)
-    // They share a node so adjacency exists
-    const nodes = [
+    // Long road a→b→c→d (300m) + short spur b→e (50m cycleway)
+    // Triangle stubs at a, d, e so they survive 2-core pruning
+    const nodes: GraphNode[] = [
       makeNode("a", 0, 0),
       makeNode("b", 0, 0.001),
       makeNode("c", 0, 0.002),
       makeNode("d", 0, 0.003),
-      // Short spur going north from node "b"
       makeNode("e", 0.0005, 0.001),
     ];
-
-    const edges = [
-      // Long road: a→b→c→d (300m total)
+    const edges: GraphEdge[] = [
       makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], { lengthMeters: 100 }),
       makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], { lengthMeters: 100 }),
       makeEdge("e3", "c", "d", [{ lat: 0, lng: 0.002 }, { lat: 0, lng: 0.003 }], { lengthMeters: 100 }),
-      // Short spur: b→e (50m) - different road class so won't merge with main road
       makeEdge("e4", "b", "e", [{ lat: 0, lng: 0.001 }, { lat: 0.0005, lng: 0.001 }], {
-        lengthMeters: 50,
-        roadClass: "cycleway",
+        lengthMeters: 50, roadClass: "cycleway",
         infrastructure: { hasDedicatedPath: true, hasShoulder: false, isSeparated: true },
       }),
     ];
+    addTriangleStub("a", 0, 0, "sa", nodes, edges);
+    addTriangleStub("d", 0, 0.003, "sd", nodes, edges);
+    addTriangleStub("e", 0.0005, 0.001, "se", nodes, edges);
 
     const graph = makeGraph(nodes, edges);
     const result = await buildCorridors(graph, { minLengthMeters: 200 });
 
     expect(result.stats.corridorCount).toBe(1);
-    expect(result.stats.connectorCount).toBe(1);
+    expect(result.stats.connectorCount).toBeGreaterThanOrEqual(1);
     expect(result.stats.totalLengthMeters).toBe(300);
     expect(result.stats.averageLengthMeters).toBe(300);
     expect(result.stats.buildTimeMs).toBeGreaterThanOrEqual(0);
@@ -418,94 +487,86 @@ describe("buildCorridors", () => {
 
   it("builds adjacency between corridors and connectors at shared nodes", async () => {
     // Two parallel long roads connected by a short spur
-    const nodes = [
-      // Road 1: east
-      makeNode("a", 0, 0),
-      makeNode("b", 0, 0.001),
-      makeNode("c", 0, 0.002),
-      makeNode("d", 0, 0.003),
-      // Road 2: east, offset north
-      makeNode("e", 0.001, 0),
-      makeNode("f", 0.001, 0.001),
-      makeNode("g", 0.001, 0.002),
-      makeNode("h", 0.001, 0.003),
+    // Triangle stubs at dead-end endpoints (a, d, e, h)
+    const nodes: GraphNode[] = [
+      makeNode("a", 0, 0), makeNode("b", 0, 0.001),
+      makeNode("c", 0, 0.002), makeNode("d", 0, 0.003),
+      makeNode("e", 0.001, 0), makeNode("f", 0.001, 0.001),
+      makeNode("g", 0.001, 0.002), makeNode("h", 0.001, 0.003),
     ];
-
-    const edges = [
-      // Road 1
+    const edges: GraphEdge[] = [
       makeEdge("r1e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], { lengthMeters: 100 }),
       makeEdge("r1e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], { lengthMeters: 100 }),
       makeEdge("r1e3", "c", "d", [{ lat: 0, lng: 0.002 }, { lat: 0, lng: 0.003 }], { lengthMeters: 100 }),
-      // Road 2
       makeEdge("r2e1", "e", "f", [{ lat: 0.001, lng: 0 }, { lat: 0.001, lng: 0.001 }], { lengthMeters: 100 }),
       makeEdge("r2e2", "f", "g", [{ lat: 0.001, lng: 0.001 }, { lat: 0.001, lng: 0.002 }], { lengthMeters: 100 }),
       makeEdge("r2e3", "g", "h", [{ lat: 0.001, lng: 0.002 }, { lat: 0.001, lng: 0.003 }], { lengthMeters: 100 }),
-      // Short connector from c to g (cycleway is incompatible with residential so it won't merge)
       makeEdge("conn", "c", "g", [{ lat: 0, lng: 0.002 }, { lat: 0.001, lng: 0.002 }], {
-        lengthMeters: 50,
-        roadClass: "cycleway",
+        lengthMeters: 50, roadClass: "cycleway",
         infrastructure: { hasDedicatedPath: true, hasShoulder: false, isSeparated: true },
       }),
     ];
+    addTriangleStub("a", 0, 0, "sa", nodes, edges);
+    addTriangleStub("d", 0, 0.003, "sd", nodes, edges);
+    addTriangleStub("e", 0.001, 0, "se", nodes, edges);
+    addTriangleStub("h", 0.001, 0.003, "sh", nodes, edges);
 
     const graph = makeGraph(nodes, edges);
     const result = await buildCorridors(graph, { minLengthMeters: 200 });
 
-    // The connector should be adjacent to both corridors
     const connectors = [...result.network.connectors.values()];
     expect(connectors.length).toBeGreaterThanOrEqual(1);
 
-    // Find the connector that links the two roads
-    const linkConnector = connectors.find(
-      (c) => c.edgeIds.includes("conn")
-    );
+    const linkConnector = connectors.find((c) => c.edgeIds.includes("conn"));
     if (linkConnector) {
       expect(linkConnector.corridorIds.length).toBeGreaterThanOrEqual(1);
-      // Its adjacency should include corridor IDs
       const adj = result.network.adjacency.get(linkConnector.id) ?? [];
       expect(adj.length).toBeGreaterThanOrEqual(1);
     }
   });
 
   it("connector crossesMajorRoad is true when edge has primary/secondary/trunk", async () => {
-    const nodes = [
+    const nodes: GraphNode[] = [
       makeNode("a", 0, 0),
       makeNode("b", 0, 0.001),
     ];
-    const edges = [
+    const edges: GraphEdge[] = [
       makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
-        lengthMeters: 50,
-        roadClass: "primary",
+        lengthMeters: 50, roadClass: "primary",
       }),
     ];
+    addTriangleStub("a", 0, 0, "sa", nodes, edges);
+    addTriangleStub("b", 0, 0.001, "sb", nodes, edges);
 
     const graph = makeGraph(nodes, edges);
     const result = await buildCorridors(graph, { minLengthMeters: 200 });
 
-    // The single short edge becomes a connector
     const connectors = [...result.network.connectors.values()];
-    expect(connectors).toHaveLength(1);
-    expect(connectors[0]!.attributes.crossesMajorRoad).toBe(true);
+    const primaryConn = connectors.find((c) => c.edgeIds.includes("e1"));
+    expect(primaryConn).toBeDefined();
+    expect(primaryConn!.attributes.crossesMajorRoad).toBe(true);
   });
 
   it("connector crossesMajorRoad is false for residential edge", async () => {
-    const nodes = [
+    const nodes: GraphNode[] = [
       makeNode("a", 0, 0),
       makeNode("b", 0, 0.001),
     ];
-    const edges = [
+    const edges: GraphEdge[] = [
       makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
-        lengthMeters: 50,
-        roadClass: "residential",
+        lengthMeters: 50, roadClass: "residential",
       }),
     ];
+    addTriangleStub("a", 0, 0, "sa", nodes, edges);
+    addTriangleStub("b", 0, 0.001, "sb", nodes, edges);
 
     const graph = makeGraph(nodes, edges);
     const result = await buildCorridors(graph, { minLengthMeters: 200 });
 
     const connectors = [...result.network.connectors.values()];
-    expect(connectors).toHaveLength(1);
-    expect(connectors[0]!.attributes.crossesMajorRoad).toBe(false);
+    const resConn = connectors.find((c) => c.edgeIds.includes("e1"));
+    expect(resConn).toBeDefined();
+    expect(resConn!.attributes.crossesMajorRoad).toBe(false);
   });
 
   it("corridors have geometry", async () => {
@@ -533,10 +594,10 @@ describe("buildCorridors", () => {
     const result1 = await buildCorridors(graph, { minLengthMeters: 50 });
     expect(result1.stats.corridorCount).toBe(1);
 
-    // With minLength=100, should be a connector
+    // With minLength=100, main chain should be a connector (plus stub connectors)
     const result2 = await buildCorridors(graph, { minLengthMeters: 100 });
     expect(result2.stats.corridorCount).toBe(0);
-    expect(result2.stats.connectorCount).toBe(1);
+    expect(result2.stats.connectorCount).toBeGreaterThanOrEqual(1);
   });
 
   it("stats include connectorCount", async () => {
@@ -544,5 +605,6 @@ describe("buildCorridors", () => {
     const result = await buildCorridors(graph, { minLengthMeters: 200 });
     expect(result.stats).toHaveProperty("connectorCount");
     expect(typeof result.stats.connectorCount).toBe("number");
+    expect(result.stats.connectorCount).toBeGreaterThanOrEqual(0);
   });
 });

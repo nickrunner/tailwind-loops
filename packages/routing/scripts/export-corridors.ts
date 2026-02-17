@@ -1,26 +1,50 @@
 /**
  * Export corridor network as color-coded GeoJSON.
- * Usage: npx tsx scripts/export-corridors.ts [--corridors-only] [--type trail,path]
+ * Usage: npx tsx scripts/export-corridors.ts [--corridors-only] [--type trail,path] [--activity cycling|running|walking]
  */
 import { ingestOsm } from "../src/ingestion/index.js";
 import { buildCorridors } from "../src/corridors/index.js";
 import { corridorNetworkToGeoJson } from "../src/export/corridor-geojson.js";
 import type { CorridorType } from "../src/domain/corridor.js";
+import type { ActivityType } from "../src/domain/intent.js";
+import { CORRIDOR_TYPES_BY_ACTIVITY } from "../src/domain/intent.js";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { writeFileSync } from "fs";
+import { writeFileSync, mkdirSync } from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PBF_PATH = resolve(__dirname, "../../../data/grand-rapids.osm.pbf");
-const OUTPUT_DIR = resolve(__dirname, "../../../data");
+const DATA_DIR = resolve(__dirname, "../../../data");
 
 const args = process.argv.slice(2);
 const corridorsOnly = args.includes("--corridors-only");
 const typeFilter = args.find((a) => a.startsWith("--type="));
-const types = typeFilter
-  ? (typeFilter.split("=")[1]!.split(",") as CorridorType[])
+const activityFilter = args.find((a) => a.startsWith("--activity="));
+
+const activity = activityFilter
+  ? (activityFilter.split("=")[1] as ActivityType)
   : undefined;
+
+// --activity takes precedence over --type
+const types = activity
+  ? CORRIDOR_TYPES_BY_ACTIVITY[activity]
+  : typeFilter
+    ? (typeFilter.split("=")[1]!.split(",") as CorridorType[])
+    : undefined;
+
+function getOutputDir(): string {
+  const label = activity ?? (types ? types.join("-") : null);
+  if (label && corridorsOnly) {
+    return resolve(DATA_DIR, `corridors-${label}-only`);
+  } else if (label) {
+    return resolve(DATA_DIR, `corridors-${label}`);
+  } else if (corridorsOnly) {
+    return resolve(DATA_DIR, "corridors-only");
+  } else {
+    return resolve(DATA_DIR, "corridors-all");
+  }
+}
 
 async function main() {
   console.log("Ingesting Grand Rapids...");
@@ -41,12 +65,9 @@ async function main() {
     corridorTypes: types,
   });
 
-  const suffix = types ? `-${types.join("-")}` : "";
-  const connSuffix = corridorsOnly ? "-corridors-only" : "";
-  const outPath = resolve(
-    OUTPUT_DIR,
-    `grand-rapids-corridors${suffix}${connSuffix}.geojson`
-  );
+  const outputDir = getOutputDir();
+  mkdirSync(outputDir, { recursive: true });
+  const outPath = resolve(outputDir, "grand-rapids-corridors.geojson");
 
   writeFileSync(outPath, JSON.stringify(geojson));
   console.log(
