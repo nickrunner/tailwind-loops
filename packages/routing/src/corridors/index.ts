@@ -340,3 +340,13 @@ export {
   buildCorridorGeometry,
   douglasPeucker,
 } from "./corridor-attributes.js";
+export {
+  scoreFlow,
+  scoreSafety,
+  scoreSurface,
+  scoreCharacter,
+  scoreCorridor,
+  scoreCorridors,
+  DEFAULT_SCORING_WEIGHTS,
+} from "./scoring.js";
+export type { ScoringWeights } from "./scoring.js";

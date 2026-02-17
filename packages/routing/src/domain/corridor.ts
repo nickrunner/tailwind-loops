@@ -11,6 +11,16 @@
  */
 
 import type { Coordinate, RoadClass, SurfaceType } from "./graph.js";
+import type { ActivityType } from "./intent.js";
+
+/** Score breakdown for a corridor (all values 0-1, higher is better) */
+export interface CorridorScore {
+  overall: number;
+  flow: number;
+  safety: number;
+  surface: number;
+  character: number;
+}
 
 /** Classification of a corridor based on its character */
 export type CorridorType =
@@ -62,6 +72,8 @@ export interface Corridor {
   geometry: Coordinate[];
   /** Whether this corridor is one-way (directional) or bidirectional */
   oneWay: boolean;
+  /** Per-activity scoring breakdown (populated by scoring module) */
+  scores?: Partial<Record<ActivityType, CorridorScore>>;
 }
 
 /**
