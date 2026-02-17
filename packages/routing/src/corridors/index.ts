@@ -68,6 +68,8 @@ export async function buildCorridors(
  * @returns The corridor type
  */
 export { edgeCompatibility } from "./edge-compatibility.js";
+export { buildChains } from "./chain-builder.js";
+export type { EdgeChain } from "./chain-builder.js";
 
 export function classifyCorridor(_corridor: Corridor): Corridor["type"] {
   // TODO: Implement classification logic
