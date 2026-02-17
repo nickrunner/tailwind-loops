@@ -2,12 +2,11 @@
  * Export corridor network as color-coded GeoJSON.
  * Usage: npx tsx scripts/export-corridors.ts [--corridors-only] [--type trail,path] [--activity road-cycling|gravel-cycling|running|walking] [--score=road-cycling|gravel-cycling|running|walking]
  */
-import { ingestOsm } from "../src/ingestion/index.js";
-import { buildCorridors } from "../src/corridors/index.js";
+import { ingestOsm, buildCorridors } from "@tailwind-loops/builder";
+import { scoreCorridors } from "../src/corridors/scoring.js";
 import { corridorNetworkToGeoJson } from "../src/export/corridor-geojson.js";
-import type { CorridorType } from "../src/domain/corridor.js";
-import type { ActivityType } from "../src/domain/intent.js";
-import { CORRIDOR_TYPES_BY_ACTIVITY } from "../src/domain/intent.js";
+import type { CorridorType, ActivityType } from "@tailwind-loops/types";
+import { CORRIDOR_TYPES_BY_ACTIVITY } from "@tailwind-loops/types";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { writeFileSync, mkdirSync } from "fs";
@@ -69,6 +68,11 @@ async function main() {
   console.log(
     `${stats.corridorCount.toLocaleString()} corridors, ${stats.connectorCount.toLocaleString()} connectors`
   );
+
+  // Score corridors if needed for export
+  if (scoreActivity) {
+    scoreCorridors(network.corridors, scoreActivity);
+  }
 
   console.log("Exporting GeoJSON...");
   const geojson = corridorNetworkToGeoJson(network, {

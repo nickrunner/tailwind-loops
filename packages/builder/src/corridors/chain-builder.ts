@@ -6,7 +6,7 @@
  * edge IDs) before attribute aggregation.
  */
 
-import type { Coordinate, Graph, GraphEdge } from "../domain/graph.js";
+import type { Coordinate, Graph, GraphEdge } from "@tailwind-loops/types";
 import type { CorridorBuilderOptions } from "./index.js";
 import { DEFAULT_CORRIDOR_OPTIONS } from "./index.js";
 import { edgeCompatibility } from "./edge-compatibility.js";

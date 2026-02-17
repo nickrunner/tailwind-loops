@@ -10,7 +10,7 @@ import type {
   RoadClass,
   SurfaceObservation,
   SurfaceType,
-} from "../../domain/index.js";
+} from "@tailwind-loops/types";
 import type { OsmTags, RelevantHighway } from "./types.js";
 import { isRelevantHighway } from "./types.js";
 

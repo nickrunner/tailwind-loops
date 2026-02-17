@@ -10,9 +10,9 @@ import type {
   Graph,
   RoadClass,
   SurfaceType,
-} from "../domain/graph.js";
+} from "@tailwind-loops/types";
 
-import type { CorridorAttributes } from "../domain/corridor.js";
+import type { CorridorAttributes } from "@tailwind-loops/types";
 
 /**
  * Aggregate corridor attributes from a set of edges.

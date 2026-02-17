@@ -5,7 +5,7 @@
  * Higher scores mean the edges have more similar character and should be merged.
  */
 
-import type { EdgeAttributes, RoadClass, SurfaceType } from "../domain/graph.js";
+import type { EdgeAttributes, RoadClass, SurfaceType } from "@tailwind-loops/types";
 import type { CorridorBuilderOptions } from "./index.js";
 import { DEFAULT_CORRIDOR_OPTIONS } from "./index.js";
 

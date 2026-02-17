@@ -19,11 +19,33 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
-  packages/routing:
+  packages/builder:
     dependencies:
+      '@tailwind-loops/types':
+        specifier: workspace:*
+        version: link:../types
       osm-pbf-parser-node:
         specifier: ^1.1.4
         version: 1.1.4
+      overpass-ts:
+        specifier: ^4.3.8
+        version: 4.3.8
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@25.2.3)
+
+  packages/routing:
+    dependencies:
+      '@tailwind-loops/builder':
+        specifier: workspace:*
+        version: link:../builder
+      '@tailwind-loops/types':
+        specifier: workspace:*
+        version: link:../types
     devDependencies:
       tsx:
         specifier: ^4.21.0
@@ -37,6 +59,9 @@ importers:
 
   packages/tuner:
     dependencies:
+      '@tailwind-loops/builder':
+        specifier: workspace:*
+        version: link:../builder
       '@tailwind-loops/routing':
         specifier: workspace:*
         version: link:../routing
@@ -44,6 +69,12 @@ importers:
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  packages/types:
+    devDependencies:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -563,6 +594,9 @@ packages:
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
 
+  isomorphic-fetch@3.0.0:
+    resolution: {integrity: sha512-qvUtwJ3j6qwsF3jLxkZ72qCgjMysPzDfeV240JHiGZsANBYd+EEuu35v7dfrJ9Up0Ak07D7GGSkGhCHTqg/5wA==}
+
   loupe@3.2.1:
     resolution: {integrity: sha512-CdzqowRJCeLU72bHvWqwRBBlLcMEtIvGrlvef74kMnV2AolS9Y8xUv1I0U/MNAWMhBlKIoyuEgoJ0t/bbwHbLQ==}
 
@@ -577,8 +611,20 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
+  node-fetch@2.7.0:
+    resolution: {integrity: sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==}
+    engines: {node: 4.x || >=6.0.0}
+    peerDependencies:
+      encoding: ^0.1.0
+    peerDependenciesMeta:
+      encoding:
+        optional: true
+
   osm-pbf-parser-node@1.1.4:
     resolution: {integrity: sha512-8+m6G1WAM1MM0lcHmhC4bZFe1XXa+BMnzME5iYJk+aexcn4gShyZPz6kaNtDOVxvu3jd9wFOmZHO3TAhjokDUQ==}
+
+  overpass-ts@4.3.8:
+    resolution: {integrity: sha512-8PdU0ZcQZf3xwH0Arf4Op4j2f8oE5wZEBG8S0ID8izqNLvu8bpDuuOIan7rvrgApyEUjpG4ao4Y+4Cqm6AIdEA==}
 
   pathe@1.1.2:
     resolution: {integrity: sha512-whLdWMYL2TwI08hn8/ZqAbrVemu0LNaNNJZX73O6qaIdCTfXutsLhMkjdENX0qhsQ9uIimo4/aQOmXkoon2nDQ==}
@@ -647,6 +693,9 @@ packages:
   tinyspy@3.0.2:
     resolution: {integrity: sha512-n1cw8k1k0x4pgA2+9XrOkFydTerNcJ1zWCO5Nn9scWHTD+5tp8dghT2x1uduQePZTZgd3Tupf+x9BxJjeJi77Q==}
     engines: {node: '>=14.0.0'}
+
+  tr46@0.0.3:
+    resolution: {integrity: sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==}
 
   tsx@4.21.0:
     resolution: {integrity: sha512-5C1sg4USs1lfG0GFb2RLXsdpXqBSEhAaA/0kPL01wxzpMqLILNxIxIOKiILz+cdg/pLnOUxFYOR5yhHU666wbw==}
@@ -721,6 +770,15 @@ packages:
         optional: true
       jsdom:
         optional: true
+
+  webidl-conversions@3.0.1:
+    resolution: {integrity: sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==}
+
+  whatwg-fetch@3.6.20:
+    resolution: {integrity: sha512-EqhiFU6daOA8kpjOWTL0olhVOF3i7OrFzSYiGsEMB8GcXS+RrzauAERX65xMeNWVqxA6HXH2m69Z9LaKKdisfg==}
+
+  whatwg-url@5.0.0:
+    resolution: {integrity: sha512-saE57nupxk6v3HY35+jzBwYa0rKSy0XR8JSxZPwgLr7ys0IBzhGviA1/TUGJLmSVqs8pb9AnvICXEuOHLprYTw==}
 
   why-is-node-running@2.3.0:
     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
@@ -1082,6 +1140,13 @@ snapshots:
 
   ieee754@1.2.1: {}
 
+  isomorphic-fetch@3.0.0:
+    dependencies:
+      node-fetch: 2.7.0
+      whatwg-fetch: 3.6.20
+    transitivePeerDependencies:
+      - encoding
+
   loupe@3.2.1: {}
 
   magic-string@0.30.21:
@@ -1092,9 +1157,19 @@ snapshots:
 
   nanoid@3.3.11: {}
 
+  node-fetch@2.7.0:
+    dependencies:
+      whatwg-url: 5.0.0
+
   osm-pbf-parser-node@1.1.4:
     dependencies:
       pbf: 3.3.0
+
+  overpass-ts@4.3.8:
+    dependencies:
+      isomorphic-fetch: 3.0.0
+    transitivePeerDependencies:
+      - encoding
 
   pathe@1.1.2: {}
 
@@ -1169,6 +1244,8 @@ snapshots:
 
   tinyspy@3.0.2: {}
 
+  tr46@0.0.3: {}
+
   tsx@4.21.0:
     dependencies:
       esbuild: 0.27.2
@@ -1241,6 +1318,15 @@ snapshots:
       - sugarss
       - supports-color
       - terser
+
+  webidl-conversions@3.0.1: {}
+
+  whatwg-fetch@3.6.20: {}
+
+  whatwg-url@5.0.0:
+    dependencies:
+      tr46: 0.0.3
+      webidl-conversions: 3.0.1
 
   why-is-node-running@2.3.0:
     dependencies:

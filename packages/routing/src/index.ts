@@ -1,27 +1,27 @@
 /**
  * @tailwind-loops/routing
  *
- * A corridor-based route engine for human-powered activities.
+ * Query-time operations for the corridor-based route engine:
+ * scoring corridors, searching for routes, and exporting results.
  *
- * Key concepts:
- * - Graph: Low-level street network from OSM
- * - Corridor: Higher-level abstraction for continuous stretches with flow
- * - Intent: What the user wants from their route
- * - Route: The result of routing
- *
- * Pipeline:
- * 1. Ingest OSM data -> Graph
- * 2. Build corridors from graph -> CorridorNetwork
- * 3. User provides intent -> RoutingPolicy (via LLM or direct)
- * 4. Search for route matching policy -> Route
+ * For graph construction and corridor building, see @tailwind-loops/builder.
+ * For domain types, see @tailwind-loops/types.
  */
 
-// Domain types
-export * from "./domain/index.js";
+// Re-export types for convenience
+export * from "@tailwind-loops/types";
 
-// Modules
-export * from "./ingestion/index.js";
-export * from "./corridors/index.js";
+// Re-export builder for convenience
+export { ingestOsm, buildCorridors } from "@tailwind-loops/builder";
+
+// Scoring
+export * from "./corridors/scoring.js";
+
+// Search
 export * from "./search/index.js";
+
+// LLM
 export * from "./llm/index.js";
+
+// Export
 export * from "./export/index.js";

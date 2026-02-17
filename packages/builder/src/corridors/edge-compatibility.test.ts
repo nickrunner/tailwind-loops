@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { edgeCompatibility } from "./edge-compatibility.js";
-import type { EdgeAttributes } from "../domain/graph.js";
+import type { EdgeAttributes } from "@tailwind-loops/types";
 
 /** Helper to create EdgeAttributes with sensible defaults */
 function makeEdge(overrides: Partial<EdgeAttributes> = {}): EdgeAttributes {

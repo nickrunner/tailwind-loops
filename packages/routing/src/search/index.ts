@@ -8,10 +8,7 @@
  * Intent -> Policy -> Search on Corridors -> Route
  */
 
-import type { Graph } from "../domain/index.js";
-import type { CorridorNetwork } from "../domain/corridor.js";
-import type { ActivityIntent, RoutingPolicy } from "../domain/intent.js";
-import type { Route, RouteAlternatives } from "../domain/route.js";
+import type { Graph, CorridorNetwork, ActivityIntent, RoutingPolicy, Route, RouteAlternatives } from "@tailwind-loops/types";
 
 /** Options for route search */
 export interface SearchOptions {

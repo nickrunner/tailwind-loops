@@ -8,7 +8,7 @@ import type {
   Corridor,
   Connector,
   CorridorType,
-} from "../domain/corridor.js";
+} from "@tailwind-loops/types";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

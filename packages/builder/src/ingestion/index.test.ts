@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { fuseSurfaceObservations } from "./index.js";
-import type { SurfaceObservation } from "../domain/index.js";
+import type { SurfaceObservation } from "@tailwind-loops/types";
 
 describe("fuseSurfaceObservations", () => {
   it("returns unknown with zero confidence for empty observations", () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { graphToGeoJson } from "./geojson.js";
-import type { Graph, GraphNode, GraphEdge, EdgeAttributes, SurfaceClassification, Infrastructure } from "../domain/index.js";
+import type { Graph, GraphNode, GraphEdge, EdgeAttributes, SurfaceClassification, Infrastructure } from "@tailwind-loops/types";
 
 function makeSurface(surface: SurfaceClassification["surface"] = "paved", confidence = 0.6): SurfaceClassification {
   return {

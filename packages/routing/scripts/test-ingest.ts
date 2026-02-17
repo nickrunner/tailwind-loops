@@ -4,7 +4,7 @@
  * Usage: npx tsx scripts/test-ingest.ts
  */
 
-import { ingestOsm } from "../src/ingestion/index.js";
+import { ingestOsm } from "@tailwind-loops/builder";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
 

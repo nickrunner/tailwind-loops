@@ -5,14 +5,14 @@
  * Useful for visualization in QGIS, geojson.io, Mapbox, Kepler.gl, etc.
  */
 
-import type { Coordinate } from "../domain/index.js";
 import type {
+  Coordinate,
   Corridor,
   CorridorNetwork,
   CorridorType,
   Connector,
-} from "../domain/corridor.js";
-import type { ActivityType } from "../domain/intent.js";
+  ActivityType,
+} from "@tailwind-loops/types";
 
 /** GeoJSON types */
 interface GeoJsonFeatureCollection {

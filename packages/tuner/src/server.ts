@@ -13,9 +13,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ingestOsm, buildCorridors } from "@tailwind-loops/builder";
 import {
-  ingestOsm,
-  buildCorridors,
   getDefaultScoringParams,
   scoreCorridorWithParams,
   corridorNetworkToGeoJson,

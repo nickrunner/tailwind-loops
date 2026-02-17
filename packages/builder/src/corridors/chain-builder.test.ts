@@ -12,7 +12,7 @@ import type {
   GraphNode,
   EdgeAttributes,
   Coordinate,
-} from "../domain/graph.js";
+} from "@tailwind-loops/types";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

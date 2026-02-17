@@ -14,9 +14,7 @@
  * - walking: very permissive, prefer paths and trails.
  */
 
-import type { Corridor, CorridorScore, CorridorType } from "../domain/corridor.js";
-import type { RoadClass, SurfaceType } from "../domain/graph.js";
-import type { ActivityType } from "../domain/intent.js";
+import type { Corridor, CorridorScore, CorridorType, RoadClass, SurfaceType, ActivityType } from "@tailwind-loops/types";
 
 // ---------------------------------------------------------------------------
 // Parameterized scoring types

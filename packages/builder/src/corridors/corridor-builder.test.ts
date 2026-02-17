@@ -7,8 +7,8 @@ import type {
   GraphNode,
   EdgeAttributes,
   Coordinate,
-} from "../domain/graph.js";
-import type { Corridor, CorridorAttributes } from "../domain/corridor.js";
+} from "@tailwind-loops/types";
+import type { Corridor, CorridorAttributes } from "@tailwind-loops/types";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

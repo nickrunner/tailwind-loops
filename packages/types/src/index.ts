@@ -1,7 +1,8 @@
 /**
- * Core domain types for the corridor-based routing engine.
+ * @tailwind-loops/types
  *
- * This module defines the conceptual model:
+ * Shared domain types for the corridor-based routing engine.
+ *
  * - Graph: Low-level street network from OSM
  * - Corridor: Higher-level abstraction for continuous stretches
  * - Intent: What the user wants from their route
@@ -12,3 +13,4 @@ export * from "./graph.js";
 export * from "./corridor.js";
 export * from "./intent.js";
 export * from "./route.js";
+export * from "./geo.js";

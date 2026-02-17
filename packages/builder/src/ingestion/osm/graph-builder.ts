@@ -12,7 +12,7 @@ import type {
   GraphEdge,
   GraphNode,
   SurfaceClassification,
-} from "../../domain/index.js";
+} from "@tailwind-loops/types";
 import { fuseSurfaceObservations } from "../index.js";
 import type { OsmNode, OsmWay } from "./types.js";
 import {

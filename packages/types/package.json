@@ -1,5 +1,5 @@
 {
-  "name": "@tailwind-loops/routing",
+  "name": "@tailwind-loops/types",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -14,17 +14,9 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "tsx": "^4.21.0",
-    "typescript": "^5.7.2",
-    "vitest": "^2.1.0"
-  },
-  "dependencies": {
-    "@tailwind-loops/types": "workspace:*",
-    "@tailwind-loops/builder": "workspace:*"
+    "typescript": "^5.7.2"
   }
 }

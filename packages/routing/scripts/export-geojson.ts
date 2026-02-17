@@ -14,7 +14,7 @@
 import { writeFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { ingestOsm } from "../src/ingestion/index.js";
+import { ingestOsm } from "@tailwind-loops/builder";
 import { graphToGeoJson, type GeoJsonExportOptions } from "../src/export/index.js";
 
 const __filename = fileURLToPath(import.meta.url);

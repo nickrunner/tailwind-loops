@@ -2,8 +2,7 @@
  * Test corridor construction against Grand Rapids data.
  * Usage: npx tsx scripts/test-corridors.ts
  */
-import { ingestOsm } from "../src/ingestion/index.js";
-import { buildCorridors } from "../src/corridors/index.js";
+import { ingestOsm, buildCorridors } from "@tailwind-loops/builder";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 

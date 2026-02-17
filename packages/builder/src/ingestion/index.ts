@@ -17,16 +17,14 @@ import type {
   SurfaceClassification,
   SurfaceDataSource,
   SurfaceType,
-} from "../domain/index.js";
+  BoundingBox,
+} from "@tailwind-loops/types";
 import { parseOsmPbf, buildGraphFromOsm } from "./osm/index.js";
+import { fetchOverpassData, parseOverpassResponse } from "./overpass/index.js";
+import type { OverpassOptions } from "./overpass/index.js";
 
-/** Bounding box for a region */
-export interface BoundingBox {
-  minLat: number;
-  maxLat: number;
-  minLng: number;
-  maxLng: number;
-}
+// Re-export BoundingBox from types for backward compatibility
+export type { BoundingBox } from "@tailwind-loops/types";
 
 /**
  * A provider of surface data for graph enrichment.
@@ -316,6 +314,49 @@ export async function ingest(options: IngestionOptions): Promise<IngestionResult
   }
 
   return result;
+}
+
+/**
+ * Ingest routing data from the Overpass API for a bounding box.
+ *
+ * This is the Overpass equivalent of `ingestOsm()`. It queries the Overpass API
+ * for routing-relevant ways and nodes, then builds a graph using the same
+ * `buildGraphFromOsm()` pipeline used for PBF ingestion.
+ *
+ * @param bbox - Bounding box to query
+ * @param options - Overpass API options (endpoint, timeout)
+ * @returns The base graph and statistics
+ */
+export async function ingestFromOverpass(
+  bbox: BoundingBox,
+  options?: OverpassOptions
+): Promise<IngestionResult> {
+  const startTime = Date.now();
+
+  // Fetch from Overpass API
+  const response = await fetchOverpassData(bbox, options);
+
+  // Parse response into OsmNode/OsmWay stream
+  const elements = parseOverpassResponse(response);
+
+  // Build graph using existing pipeline
+  const { graph, stats: buildStats } = await buildGraphFromOsm(elements);
+
+  // Compute surface statistics
+  const surfaceStats = computeSurfaceStats(graph);
+
+  const ingestionTimeMs = Date.now() - startTime;
+
+  return {
+    graph,
+    stats: {
+      nodesCount: buildStats.nodesCount,
+      edgesCount: buildStats.edgesCount,
+      totalLengthMeters: buildStats.totalLengthMeters,
+      ingestionTimeMs,
+      surface: surfaceStats,
+    },
+  };
 }
 
 /**

@@ -10,9 +10,7 @@
  * about the structure and quality of routes based on computed attributes.
  */
 
-import type { ActivityIntent, RoutingPolicy } from "../domain/intent.js";
-import type { Corridor } from "../domain/corridor.js";
-import type { Route } from "../domain/route.js";
+import type { ActivityIntent, RoutingPolicy, Corridor, Route } from "@tailwind-loops/types";
 
 /** LLM provider configuration */
 export interface LlmConfig {

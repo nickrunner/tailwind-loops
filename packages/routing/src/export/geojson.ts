@@ -6,7 +6,7 @@
  * in QGIS, geojson.io, Mapbox, etc.
  */
 
-import type { Graph, GraphEdge, Coordinate } from "../domain/index.js";
+import type { Graph, GraphEdge, Coordinate } from "@tailwind-loops/types";
 
 /** GeoJSON types (subset we need) */
 interface GeoJsonFeatureCollection {

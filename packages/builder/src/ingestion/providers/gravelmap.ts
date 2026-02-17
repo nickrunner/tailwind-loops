@@ -8,7 +8,7 @@
  * API: https://gravelmap.com (documentation TBD)
  */
 
-import type { GraphEdge, SurfaceObservation, SurfaceType } from "../../domain/index.js";
+import type { GraphEdge, SurfaceObservation, SurfaceType } from "@tailwind-loops/types";
 import type { BoundingBox, SurfaceDataProvider } from "../index.js";
 
 /** Gravelmap API configuration */

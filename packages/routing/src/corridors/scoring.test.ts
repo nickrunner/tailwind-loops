@@ -8,8 +8,8 @@ import {
   scoreCorridors,
   DEFAULT_SCORING_WEIGHTS,
 } from "./scoring.js";
-import type { Corridor, CorridorType } from "../domain/corridor.js";
-import type { ActivityType } from "../domain/intent.js";
+import type { Corridor, CorridorType } from "@tailwind-loops/types";
+import type { ActivityType } from "@tailwind-loops/types";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
