@@ -319,21 +319,40 @@ function buildConnectorAttributes(
 ): ConnectorAttributes {
   let totalLength = 0;
   let crossesMajorRoad = false;
+  let hasSignal = false;
+  let hasStop = false;
 
+  // Collect all unique node IDs in this connector
+  const nodeIds = new Set<string>();
   for (const edgeId of edgeIds) {
     const edge = graph.edges.get(edgeId)!;
     totalLength += edge.attributes.lengthMeters;
     if (MAJOR_ROAD_CLASSES.has(edge.attributes.roadClass)) {
       crossesMajorRoad = true;
     }
+    nodeIds.add(edge.fromNodeId);
+    nodeIds.add(edge.toNodeId);
   }
+
+  // Check all nodes for stop signs and signals
+  for (const nodeId of nodeIds) {
+    const node = graph.nodes.get(nodeId);
+    if (node?.hasSignal) hasSignal = true;
+    if (node?.hasStop) hasStop = true;
+  }
+
+  // Crossing difficulty factors in signals/stops
+  let crossingDifficulty = 0.1;
+  if (crossesMajorRoad) crossingDifficulty = hasSignal ? 0.3 : 0.7;
+  else if (hasStop) crossingDifficulty = 0.2;
+  else if (hasSignal) crossingDifficulty = 0.15;
 
   return {
     lengthMeters: totalLength,
     crossesMajorRoad,
-    hasSignal: false,
-    hasStop: false,
-    crossingDifficulty: crossesMajorRoad ? 0.5 : 0.1,
+    hasSignal,
+    hasStop,
+    crossingDifficulty,
   };
 }
 

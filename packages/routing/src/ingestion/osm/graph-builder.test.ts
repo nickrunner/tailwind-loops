@@ -334,4 +334,28 @@ describe("buildGraphFromOsm", () => {
     expect(stats.totalLengthMeters).toBeGreaterThan(0);
     expect(stats.buildTimeMs).toBeGreaterThanOrEqual(0);
   });
+
+  it("detects stop signs from OSM node tags", async () => {
+    const elements = mockOsmElements([
+      { type: "node", id: 1, lat: 42.9, lon: -85.6, tags: { highway: "stop" } },
+      { type: "node", id: 2, lat: 42.91, lon: -85.61 },
+      { type: "way", id: 100, refs: [1, 2], tags: { highway: "residential" } },
+    ]);
+
+    const { graph } = await buildGraphFromOsm(elements);
+    expect(graph.nodes.get("1")!.hasStop).toBe(true);
+    expect(graph.nodes.get("2")!.hasStop).toBeUndefined();
+  });
+
+  it("detects traffic signals from OSM node tags", async () => {
+    const elements = mockOsmElements([
+      { type: "node", id: 1, lat: 42.9, lon: -85.6 },
+      { type: "node", id: 2, lat: 42.91, lon: -85.61, tags: { highway: "traffic_signals" } },
+      { type: "way", id: 100, refs: [1, 2], tags: { highway: "residential" } },
+    ]);
+
+    const { graph } = await buildGraphFromOsm(elements);
+    expect(graph.nodes.get("1")!.hasSignal).toBeUndefined();
+    expect(graph.nodes.get("2")!.hasSignal).toBe(true);
+  });
 });

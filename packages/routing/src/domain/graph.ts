@@ -18,6 +18,10 @@ export interface GraphNode {
   coordinate: Coordinate;
   /** OSM node ID if sourced from OSM */
   osmId?: string;
+  /** Node has a stop sign (OSM highway=stop) */
+  hasStop?: boolean;
+  /** Node has a traffic signal (OSM highway=traffic_signals) */
+  hasSignal?: boolean;
 }
 
 /** Road classification from OSM highway tag or equivalent */

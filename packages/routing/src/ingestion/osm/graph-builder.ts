@@ -162,17 +162,25 @@ export async function buildGraphFromOsm(
       const toNodeId = String(endWayCoord.nodeId);
 
       if (!nodes.has(fromNodeId)) {
+        const fromOsmNode = osmNodes.get(startWayCoord.nodeId);
+        const fromHighway = fromOsmNode?.tags?.["highway"];
         nodes.set(fromNodeId, {
           id: fromNodeId,
           coordinate: startWayCoord.coord,
           osmId: String(startWayCoord.nodeId),
+          ...(fromHighway === "stop" && { hasStop: true }),
+          ...(fromHighway === "traffic_signals" && { hasSignal: true }),
         });
       }
       if (!nodes.has(toNodeId)) {
+        const toOsmNode = osmNodes.get(endWayCoord.nodeId);
+        const toHighway = toOsmNode?.tags?.["highway"];
         nodes.set(toNodeId, {
           id: toNodeId,
           coordinate: endWayCoord.coord,
           osmId: String(endWayCoord.nodeId),
+          ...(toHighway === "stop" && { hasStop: true }),
+          ...(toHighway === "traffic_signals" && { hasSignal: true }),
         });
       }
 

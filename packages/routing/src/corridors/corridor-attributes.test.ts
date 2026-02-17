@@ -226,7 +226,7 @@ describe("aggregateAttributes", () => {
     expect(attrs.averageSpeedLimit).toBeUndefined();
   });
 
-  it("sets stopDensityPerKm to 0 (placeholder)", () => {
+  it("sets stopDensityPerKm to 0 when no stops present", () => {
     const graph = makeGraph(
       [makeNode("a", 0, 0), makeNode("b", 0, 0.001)],
       [makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }])]
@@ -234,6 +234,58 @@ describe("aggregateAttributes", () => {
 
     const attrs = aggregateAttributes(["e1"], graph);
     expect(attrs.stopDensityPerKm).toBe(0);
+  });
+
+  it("computes stopDensityPerKm from stop sign nodes", () => {
+    // Two edges, ~1km total. Node "b" has a stop sign.
+    const nodeA = makeNode("a", 42.96, -85.66);
+    const nodeB = { ...makeNode("b", 42.965, -85.66), hasStop: true };
+    const nodeC = makeNode("c", 42.97, -85.66);
+    const graph = makeGraph(
+      [nodeA, nodeB, nodeC],
+      [
+        makeEdge("e1", "a", "b", [nodeA.coordinate, nodeB.coordinate], { lengthMeters: 500 }),
+        makeEdge("e2", "b", "c", [nodeB.coordinate, nodeC.coordinate], { lengthMeters: 500 }),
+      ]
+    );
+
+    const attrs = aggregateAttributes(["e1", "e2"], graph);
+    // 1 stop over 1km = 1.0 per km
+    expect(attrs.stopDensityPerKm).toBe(1.0);
+  });
+
+  it("computes stopDensityPerKm from signal nodes", () => {
+    const nodeA = makeNode("a", 42.96, -85.66);
+    const nodeB = { ...makeNode("b", 42.965, -85.66), hasSignal: true };
+    const nodeC = makeNode("c", 42.97, -85.66);
+    const graph = makeGraph(
+      [nodeA, nodeB, nodeC],
+      [
+        makeEdge("e1", "a", "b", [nodeA.coordinate, nodeB.coordinate], { lengthMeters: 500 }),
+        makeEdge("e2", "b", "c", [nodeB.coordinate, nodeC.coordinate], { lengthMeters: 500 }),
+      ]
+    );
+
+    const attrs = aggregateAttributes(["e1", "e2"], graph);
+    expect(attrs.stopDensityPerKm).toBe(1.0);
+  });
+
+  it("deduplicates stop nodes shared between edges", () => {
+    // Node "b" is toNode of e1 and fromNode of e2 — should only count once
+    const nodeA = makeNode("a", 42.96, -85.66);
+    const nodeB = { ...makeNode("b", 42.965, -85.66), hasStop: true };
+    const nodeC = makeNode("c", 42.97, -85.66);
+    const graph = makeGraph(
+      [nodeA, nodeB, nodeC],
+      [
+        makeEdge("e1", "a", "b", [nodeA.coordinate, nodeB.coordinate], { lengthMeters: 500 }),
+        makeEdge("e2", "b", "c", [nodeB.coordinate, nodeC.coordinate], { lengthMeters: 500 }),
+      ]
+    );
+
+    const attrs = aggregateAttributes(["e1", "e2"], graph);
+    // 1 unique stop node, not 2
+    expect(attrs.stopDensityPerKm).toBe(1.0);
   });
 
   it("counts turns above 30 degrees between consecutive edges", () => {
