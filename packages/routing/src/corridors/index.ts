@@ -67,6 +67,8 @@ export async function buildCorridors(
  * @param corridor - The corridor to classify
  * @returns The corridor type
  */
+export { edgeCompatibility } from "./edge-compatibility.js";
+
 export function classifyCorridor(_corridor: Corridor): Corridor["type"] {
   // TODO: Implement classification logic
   // Based on road class, infrastructure, traffic, etc.
