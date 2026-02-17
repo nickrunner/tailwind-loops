@@ -92,6 +92,35 @@ export async function buildGraphFromOsm(
     }
   }
 
+  // Detect implicit road crossings: nodes shared between trail/path/cycleway
+  // ways and road ways. When a trail crosses a road, the cyclist must stop
+  // even if there's no explicit highway=stop or highway=crossing tag.
+  // Only count implicit crossings for dedicated cycling/trail infrastructure.
+  // Exclude footway/pedestrian (often sidewalks that touch every cross-street).
+  const TRAIL_HIGHWAYS = new Set(["cycleway", "path", "bridleway", "track"]);
+  const ROAD_HIGHWAYS = new Set([
+    "primary", "primary_link", "secondary", "secondary_link",
+    "tertiary", "tertiary_link", "unclassified", "residential",
+    "living_street", "service",
+  ]);
+
+  const trailNodes = new Set<number>();
+  const roadNodes = new Set<number>();
+  for (const way of osmWays) {
+    const hw = way.tags?.["highway"];
+    if (hw && TRAIL_HIGHWAYS.has(hw)) {
+      for (const nodeId of way.refs) trailNodes.add(nodeId);
+    }
+    if (hw && ROAD_HIGHWAYS.has(hw)) {
+      for (const nodeId of way.refs) roadNodes.add(nodeId);
+    }
+  }
+  // Nodes where a trail/cycleway intersects a road
+  const implicitCrossingNodes = new Set<number>();
+  for (const nodeId of trailNodes) {
+    if (roadNodes.has(nodeId)) implicitCrossingNodes.add(nodeId);
+  }
+
   // Build graph structures
   const nodes = new Map<string, GraphNode>();
   const edges = new Map<string, GraphEdge>();
@@ -112,6 +141,7 @@ export async function buildGraphFromOsm(
     const speedLimit = extractSpeedLimit(way.tags);
     const lanes = extractLanes(way.tags);
     const name = extractName(way.tags);
+    const isTrailWay = TRAIL_HIGHWAYS.has(way.tags?.["highway"] ?? "");
 
     // Get coordinates for all nodes in the way
     const wayCoords: { nodeId: number; coord: Coordinate }[] = [];
@@ -147,16 +177,23 @@ export async function buildGraphFromOsm(
       const startWayCoord = wayCoords[startIdx]!;
       const endWayCoord = wayCoords[endIdx]!;
 
-      // Build geometry for this segment and count stops/signals on all nodes
+      // Build geometry for this segment and count stops/signals/crossings on all nodes
       const geometry: Coordinate[] = [];
       let stopSignCount = 0;
       let trafficSignalCount = 0;
+      let roadCrossingCount = 0;
       for (let j = startIdx; j <= endIdx; j++) {
         geometry.push(wayCoords[j]!.coord);
-        const nodeOsm = osmNodes.get(wayCoords[j]!.nodeId);
+        const osmNodeId = wayCoords[j]!.nodeId;
+        const nodeOsm = osmNodes.get(osmNodeId);
         const hw = nodeOsm?.tags?.["highway"];
         if (hw === "stop") stopSignCount++;
-        if (hw === "traffic_signals") trafficSignalCount++;
+        else if (hw === "traffic_signals") trafficSignalCount++;
+        // Road crossings only matter on trail/cycleway edges — a cyclist
+        // on a trail must stop at road crossings; a car on a road does not.
+        else if (isTrailWay && hw === "crossing") roadCrossingCount++;
+        else if (isTrailWay && j !== startIdx && j !== endIdx
+          && implicitCrossingNodes.has(osmNodeId)) roadCrossingCount++;
       }
 
       // Calculate length
@@ -176,6 +213,7 @@ export async function buildGraphFromOsm(
           osmId: String(startWayCoord.nodeId),
           ...(fromHighway === "stop" && { hasStop: true }),
           ...(fromHighway === "traffic_signals" && { hasSignal: true }),
+          ...((fromHighway === "crossing" || (isTrailWay && implicitCrossingNodes.has(startWayCoord.nodeId))) && { isCrossing: true }),
         });
       }
       if (!nodes.has(toNodeId)) {
@@ -187,6 +225,7 @@ export async function buildGraphFromOsm(
           osmId: String(endWayCoord.nodeId),
           ...(toHighway === "stop" && { hasStop: true }),
           ...(toHighway === "traffic_signals" && { hasSignal: true }),
+          ...((toHighway === "crossing" || (isTrailWay && implicitCrossingNodes.has(endWayCoord.nodeId))) && { isCrossing: true }),
         });
       }
 
@@ -202,6 +241,7 @@ export async function buildGraphFromOsm(
         name,
         ...(stopSignCount > 0 && { stopSignCount }),
         ...(trafficSignalCount > 0 && { trafficSignalCount }),
+        ...(roadCrossingCount > 0 && { roadCrossingCount }),
       };
 
       // Create edge(s)

@@ -331,6 +331,7 @@ function buildConnectorAttributes(
     // Use edge-level counts (includes intermediate OSM nodes)
     if ((edge.attributes.trafficSignalCount ?? 0) > 0) hasSignal = true;
     if ((edge.attributes.stopSignCount ?? 0) > 0) hasStop = true;
+    if ((edge.attributes.roadCrossingCount ?? 0) > 0) hasStop = true;
   }
 
   // Also check endpoint graph nodes (they carry tags from the split-point OSM nodes)
@@ -341,6 +342,7 @@ function buildConnectorAttributes(
     const endNode = graph.nodes.get(lastEdge.toNodeId);
     if (startNode?.hasSignal || endNode?.hasSignal) hasSignal = true;
     if (startNode?.hasStop || endNode?.hasStop) hasStop = true;
+    if (startNode?.isCrossing || endNode?.isCrossing) hasStop = true;
   }
 
   // Crossing difficulty factors in signals/stops

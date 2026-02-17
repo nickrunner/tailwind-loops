@@ -65,10 +65,12 @@ export function aggregateAttributes(
       speedLimitLength += len;
     }
 
-    // Count stop signs and traffic signals from edge-level counts
-    // (includes intermediate OSM nodes, not just endpoints)
+    // Count all stop controls: stop signs, traffic signals, and road crossings
+    // Edge-level counts cover intermediate nodes; endpoint crossing nodes are
+    // counted via GraphNode.isCrossing (deduplicated across shared junctions)
     totalStopControls += (edge.attributes.stopSignCount ?? 0)
-      + (edge.attributes.trafficSignalCount ?? 0);
+      + (edge.attributes.trafficSignalCount ?? 0)
+      + (edge.attributes.roadCrossingCount ?? 0);
 
     // Turns: angle changes > 30 degrees between consecutive edges
     if (i > 0) {

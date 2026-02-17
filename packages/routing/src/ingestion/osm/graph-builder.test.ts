@@ -347,6 +347,40 @@ describe("buildGraphFromOsm", () => {
     expect(graph.nodes.get("2")!.hasStop).toBeUndefined();
   });
 
+  it("detects highway=crossing as roadCrossingCount", async () => {
+    const elements = mockOsmElements([
+      { type: "node", id: 1, lat: 42.9, lon: -85.6 },
+      { type: "node", id: 2, lat: 42.91, lon: -85.61, tags: { highway: "crossing" } },
+      { type: "node", id: 3, lat: 42.92, lon: -85.62 },
+      { type: "way", id: 100, refs: [1, 2, 3], tags: { highway: "cycleway" } },
+    ]);
+
+    const { graph } = await buildGraphFromOsm(elements);
+    // Node 2 is intermediate (only 1 way references it), so it's not a split point.
+    // The crossing count should be on the edge.
+    const edges = [...graph.edges.values()];
+    const totalCrossings = edges.reduce((s, e) => s + (e.attributes.roadCrossingCount ?? 0), 0);
+    expect(totalCrossings).toBeGreaterThanOrEqual(1);
+  });
+
+  it("detects implicit road crossings where trail meets road", async () => {
+    // Node 2 is shared between a cycleway and a residential road
+    const elements = mockOsmElements([
+      { type: "node", id: 1, lat: 42.9, lon: -85.6 },
+      { type: "node", id: 2, lat: 42.91, lon: -85.61 },
+      { type: "node", id: 3, lat: 42.92, lon: -85.62 },
+      { type: "node", id: 4, lat: 42.91, lon: -85.60 },
+      { type: "way", id: 100, refs: [1, 2, 3], tags: { highway: "cycleway" } },
+      { type: "way", id: 101, refs: [4, 2], tags: { highway: "residential" } },
+    ]);
+
+    const { graph } = await buildGraphFromOsm(elements);
+    // Node 2 is referenced by 2 ways → split point, flagged as implicit crossing
+    expect(graph.nodes.get("2")!.isCrossing).toBe(true);
+    // Nodes 1 and 3 are NOT crossings
+    expect(graph.nodes.get("1")!.isCrossing).toBeUndefined();
+  });
+
   it("detects traffic signals from OSM node tags", async () => {
     const elements = mockOsmElements([
       { type: "node", id: 1, lat: 42.9, lon: -85.6 },

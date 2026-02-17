@@ -22,6 +22,8 @@ export interface GraphNode {
   hasStop?: boolean;
   /** Node has a traffic signal (OSM highway=traffic_signals) */
   hasSignal?: boolean;
+  /** Node is a road crossing (highway=crossing or trail-road intersection) */
+  isCrossing?: boolean;
 }
 
 /** Road classification from OSM highway tag or equivalent */
@@ -123,6 +125,8 @@ export interface EdgeAttributes {
   stopSignCount?: number;
   /** Number of traffic signals along this edge (from OSM node tags) */
   trafficSignalCount?: number;
+  /** Number of road crossings along this edge (explicit highway=crossing or implicit trail-road intersection) */
+  roadCrossingCount?: number;
 }
 
 /** Convenience accessor for surface type (most common use case) */
