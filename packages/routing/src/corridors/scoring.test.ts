@@ -4,6 +4,7 @@ import {
   scoreSafety,
   scoreSurface,
   scoreCharacter,
+  scoreScenic,
   scoreCorridor,
   scoreCorridors,
   DEFAULT_SCORING_WEIGHTS,
@@ -26,6 +27,7 @@ function makeCorridor(overrides: Partial<Corridor>): Corridor {
       separationContinuity: 0,
       stopDensityPerKm: 0,
       turnsCount: 0,
+      scenicScore: 0,
     },
     edgeIds: [],
     startNodeId: "a",
@@ -268,6 +270,35 @@ describe("scoreCharacter", () => {
   });
 });
 
+// ─── scoreScenic ────────────────────────────────────────────────────────────
+
+describe("scoreScenic", () => {
+  it("corridor with no scenic designation scores 0", () => {
+    const corridor = makeCorridor({});
+    expect(scoreScenic(corridor)).toBe(0);
+  });
+
+  it("corridor with full scenic designation scores 1", () => {
+    const corridor = makeCorridor({
+      attributes: {
+        ...makeCorridor({}).attributes,
+        scenicScore: 1.0,
+      },
+    });
+    expect(scoreScenic(corridor)).toBe(1.0);
+  });
+
+  it("corridor with partial scenic designation scores proportionally", () => {
+    const corridor = makeCorridor({
+      attributes: {
+        ...makeCorridor({}).attributes,
+        scenicScore: 0.6,
+      },
+    });
+    expect(scoreScenic(corridor)).toBeCloseTo(0.6);
+  });
+});
+
 // ─── scoreCorridor ──────────────────────────────────────────────────────────
 
 describe("scoreCorridor", () => {
@@ -279,18 +310,19 @@ describe("scoreCorridor", () => {
     expect(result).toHaveProperty("safety");
     expect(result).toHaveProperty("surface");
     expect(result).toHaveProperty("character");
+    expect(result).toHaveProperty("scenic");
   });
 
   it("overall equals flow when weights={flow:1, others:0}", () => {
     const corridor = makeCorridor({});
-    const weights = { flow: 1, safety: 0, surface: 0, character: 0 };
+    const weights = { flow: 1, safety: 0, surface: 0, character: 0, scenic: 0 };
     const result = scoreCorridor(corridor, "road-cycling", weights);
     expect(result.overall).toBeCloseTo(result.flow, 10);
   });
 
   it("overall equals safety when weights={safety:1, others:0}", () => {
     const corridor = makeCorridor({});
-    const weights = { flow: 0, safety: 1, surface: 0, character: 0 };
+    const weights = { flow: 0, safety: 1, surface: 0, character: 0, scenic: 0 };
     const result = scoreCorridor(corridor, "road-cycling", weights);
     expect(result.overall).toBeCloseTo(result.safety, 10);
   });
@@ -369,7 +401,7 @@ describe("DEFAULT_SCORING_WEIGHTS", () => {
     const activities: ActivityType[] = ["road-cycling", "gravel-cycling", "running", "walking"];
     for (const activity of activities) {
       const w = DEFAULT_SCORING_WEIGHTS[activity];
-      const sum = w.flow + w.safety + w.surface + w.character;
+      const sum = w.flow + w.safety + w.surface + w.character + w.scenic;
       expect(sum).toBeCloseTo(1.0, 10);
     }
   });

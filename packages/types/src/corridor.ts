@@ -20,6 +20,7 @@ export interface CorridorScore {
   safety: number;
   surface: number;
   character: number;
+  scenic: number;
 }
 
 /** Classification of a corridor based on its character */
@@ -51,6 +52,8 @@ export interface CorridorAttributes {
   separationContinuity: number;
   /** Number of sharp turns or direction changes */
   turnsCount: number;
+  /** Fraction of corridor length with scenic designation (0-1) */
+  scenicScore: number;
 }
 
 /** A corridor - continuous stretch with uniform riding character */

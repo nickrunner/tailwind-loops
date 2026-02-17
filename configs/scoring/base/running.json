@@ -1,6 +1,6 @@
 {
   "activityType": "running",
-  "weights": { "flow": 0.2, "safety": 0.3, "surface": 0.25, "character": 0.25 },
+  "weights": { "flow": 0.20, "safety": 0.25, "surface": 0.25, "character": 0.20, "scenic": 0.10 },
   "flow": {
     "lengthLogDenominator": 300,
     "lengthLogNumerator": 10000,
@@ -25,5 +25,6 @@
     "arterial": 0.1,
     "mixed": 0.2
   },
-  "surfaceConfidenceMinFactor": 0.5
+  "surfaceConfidenceMinFactor": 0.5,
+  "scenicBoost": 1.0
 }

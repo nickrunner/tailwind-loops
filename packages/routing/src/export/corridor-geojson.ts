@@ -197,6 +197,7 @@ function corridorToFeature(
     properties["scoreSafety"] = Math.round(score.safety * 1000) / 1000;
     properties["scoreSurface"] = Math.round(score.surface * 1000) / 1000;
     properties["scoreCharacter"] = Math.round(score.character * 1000) / 1000;
+    properties["scoreScenic"] = Math.round(score.scenic * 1000) / 1000;
   }
 
   if (includeStyle) {

@@ -21,6 +21,7 @@ import {
   extractName,
   extractOneWay,
   extractRoadClass,
+  extractScenicDesignation,
   extractSpeedLimit,
   extractSurface,
   isReverseOneWay,
@@ -141,6 +142,7 @@ export async function buildGraphFromOsm(
     const speedLimit = extractSpeedLimit(way.tags);
     const lanes = extractLanes(way.tags);
     const name = extractName(way.tags);
+    const scenicDesignation = extractScenicDesignation(way.tags);
     const isTrailWay = TRAIL_HIGHWAYS.has(way.tags?.["highway"] ?? "");
 
     // Get coordinates for all nodes in the way
@@ -242,6 +244,7 @@ export async function buildGraphFromOsm(
         ...(stopSignCount > 0 && { stopSignCount }),
         ...(trafficSignalCount > 0 && { trafficSignalCount }),
         ...(roadCrossingCount > 0 && { roadCrossingCount }),
+        ...(scenicDesignation && { scenicDesignation }),
       };
 
       // Create edge(s)

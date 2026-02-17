@@ -195,6 +195,7 @@ function makeCorridor(overrides: Partial<Corridor>): Corridor {
       separationContinuity: 0,
       stopDensityPerKm: 0,
       turnsCount: 0,
+      scenicScore: 0,
     },
     edgeIds: [],
     startNodeId: "a",
@@ -219,6 +220,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0.9,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("trail");
@@ -235,6 +237,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0.8,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("trail");
@@ -251,6 +254,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0.3,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("path");
@@ -267,6 +271,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("path");
@@ -283,6 +288,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("quiet-road");
@@ -300,6 +306,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("quiet-road");
@@ -317,6 +324,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("mixed");
@@ -333,6 +341,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("collector");
@@ -349,6 +358,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("collector");
@@ -365,6 +375,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("arterial");
@@ -381,6 +392,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("arterial");
@@ -397,6 +409,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("arterial");
@@ -413,6 +426,7 @@ describe("classifyCorridor", () => {
         separationContinuity: 0,
         stopDensityPerKm: 0,
         turnsCount: 0,
+        scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("mixed");

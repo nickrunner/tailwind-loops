@@ -319,3 +319,15 @@ export function extractName(tags: OsmTags | undefined): string | undefined {
   if (!tags) return undefined;
   return tags["name"] ?? tags["ref"] ?? tags["official_name"];
 }
+
+/**
+ * Extract scenic designation from OSM tags.
+ *
+ * Checks for the `scenic=yes` tag on the way.
+ *
+ * @param tags - OSM tags object
+ * @returns true if the way is designated as scenic
+ */
+export function extractScenicDesignation(tags: OsmTags | undefined): boolean {
+  return tags?.["scenic"] === "yes";
+}

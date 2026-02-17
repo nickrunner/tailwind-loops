@@ -1,6 +1,6 @@
 {
   "activityType": "walking",
-  "weights": { "flow": 0.15, "safety": 0.35, "surface": 0.2, "character": 0.3 },
+  "weights": { "flow": 0.15, "safety": 0.30, "surface": 0.20, "character": 0.20, "scenic": 0.15 },
   "flow": {
     "lengthLogDenominator": 300,
     "lengthLogNumerator": 10000,
@@ -25,5 +25,6 @@
     "arterial": 0.1,
     "mixed": 0.2
   },
-  "surfaceConfidenceMinFactor": 0.5
+  "surfaceConfidenceMinFactor": 0.5,
+  "scenicBoost": 1.0
 }

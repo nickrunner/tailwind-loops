@@ -127,6 +127,8 @@ export interface EdgeAttributes {
   trafficSignalCount?: number;
   /** Number of road crossings along this edge (explicit highway=crossing or implicit trail-road intersection) */
   roadCrossingCount?: number;
+  /** Whether this edge has a scenic designation (OSM scenic=yes) */
+  scenicDesignation?: boolean;
 }
 
 /** Convenience accessor for surface type (most common use case) */

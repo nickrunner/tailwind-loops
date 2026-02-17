@@ -51,6 +51,7 @@ export interface ScoringParams {
   surfaceScores: Record<SurfaceType, number>;
   characterScores: Record<CorridorType, number>;
   surfaceConfidenceMinFactor: number;
+  scenicBoost: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -304,23 +305,44 @@ export function scoreCharacterWithParams(
 }
 
 // ---------------------------------------------------------------------------
+// Scenic scoring
+// ---------------------------------------------------------------------------
+
+/**
+ * Score the scenic quality of a corridor.
+ *
+ * Currently based on the fraction of the corridor with OSM scenic=yes
+ * designation. Can later be enriched with proximity to water bodies,
+ * parks, viewpoints, etc.
+ */
+export function scoreScenic(corridor: Corridor): number {
+  return scoreScenicWithParams(corridor, 1.0);
+}
+
+/** Parameterized scenic scoring with a boost multiplier for tuning. */
+export function scoreScenicWithParams(corridor: Corridor, scenicBoost: number): number {
+  return Math.min(1, corridor.attributes.scenicScore * scenicBoost);
+}
+
+// ---------------------------------------------------------------------------
 // Overall scoring
 // ---------------------------------------------------------------------------
 
-/** Weights for combining the four scoring dimensions */
+/** Weights for combining the five scoring dimensions */
 export interface ScoringWeights {
   flow: number;
   safety: number;
   surface: number;
   character: number;
+  scenic: number;
 }
 
 /** Default scoring weights per activity type */
 export const DEFAULT_SCORING_WEIGHTS: Record<ActivityType, ScoringWeights> = {
-  "road-cycling": { flow: 0.3, safety: 0.2, surface: 0.25, character: 0.25 },
-  "gravel-cycling": { flow: 0.25, safety: 0.2, surface: 0.3, character: 0.25 },
-  running: { flow: 0.2, safety: 0.3, surface: 0.25, character: 0.25 },
-  walking: { flow: 0.15, safety: 0.35, surface: 0.2, character: 0.3 }
+  "road-cycling": { flow: 0.25, safety: 0.20, surface: 0.25, character: 0.20, scenic: 0.10 },
+  "gravel-cycling": { flow: 0.20, safety: 0.20, surface: 0.25, character: 0.20, scenic: 0.15 },
+  running: { flow: 0.20, safety: 0.25, surface: 0.25, character: 0.20, scenic: 0.10 },
+  walking: { flow: 0.15, safety: 0.30, surface: 0.20, character: 0.20, scenic: 0.15 }
 };
 
 /**
@@ -338,10 +360,11 @@ export function scoreCorridor(
   const safety = scoreSafety(corridor);
   const surface = scoreSurface(corridor, activityType);
   const character = scoreCharacter(corridor, activityType);
+  const scenic = scoreScenic(corridor);
 
-  const overall = w.flow * flow + w.safety * safety + w.surface * surface + w.character * character;
+  const overall = w.flow * flow + w.safety * safety + w.surface * surface + w.character * character + w.scenic * scenic;
 
-  return { overall: Math.max(0, Math.min(1, overall)), flow, safety, surface, character };
+  return { overall: Math.max(0, Math.min(1, overall)), flow, safety, surface, character, scenic };
 }
 
 /** Score a single corridor using fully parameterized scoring. */
@@ -354,11 +377,12 @@ export function scoreCorridorWithParams(corridor: Corridor, params: ScoringParam
     params.surfaceConfidenceMinFactor
   );
   const character = scoreCharacterWithParams(corridor, params.characterScores);
+  const scenic = scoreScenicWithParams(corridor, params.scenicBoost);
 
   const w = params.weights;
-  const overall = w.flow * flow + w.safety * safety + w.surface * surface + w.character * character;
+  const overall = w.flow * flow + w.safety * safety + w.surface * surface + w.character * character + w.scenic * scenic;
 
-  return { overall: Math.max(0, Math.min(1, overall)), flow, safety, surface, character };
+  return { overall: Math.max(0, Math.min(1, overall)), flow, safety, surface, character, scenic };
 }
 
 /**
@@ -396,7 +420,7 @@ export function scoreCorridorsWithParams(
 
 const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
   "road-cycling": {
-    weights: { flow: 0.3, safety: 0.2, surface: 0.25, character: 0.25 },
+    weights: { flow: 0.25, safety: 0.20, surface: 0.25, character: 0.20, scenic: 0.10 },
     flow: {
       lengthLogDenominator: 300,
       lengthLogNumerator: 10000,
@@ -421,10 +445,11 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
       trail: 0.3,
       path: 0.1
     },
-    surfaceConfidenceMinFactor: 0.5
+    surfaceConfidenceMinFactor: 0.5,
+    scenicBoost: 1.0
   },
   "gravel-cycling": {
-    weights: { flow: 0.25, safety: 0.2, surface: 0.3, character: 0.25 },
+    weights: { flow: 0.20, safety: 0.20, surface: 0.25, character: 0.20, scenic: 0.15 },
     flow: {
       lengthLogDenominator: 300,
       lengthLogNumerator: 10000,
@@ -449,10 +474,11 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
       path: 0,
       arterial: 0.1
     },
-    surfaceConfidenceMinFactor: 0.5
+    surfaceConfidenceMinFactor: 0.5,
+    scenicBoost: 1.0
   },
   running: {
-    weights: { flow: 0.2, safety: 0.3, surface: 0.25, character: 0.25 },
+    weights: { flow: 0.20, safety: 0.25, surface: 0.25, character: 0.20, scenic: 0.10 },
     flow: {
       lengthLogDenominator: 300,
       lengthLogNumerator: 10000,
@@ -477,10 +503,11 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
       arterial: 0.1,
       mixed: 0.2
     },
-    surfaceConfidenceMinFactor: 0.5
+    surfaceConfidenceMinFactor: 0.5,
+    scenicBoost: 1.0
   },
   walking: {
-    weights: { flow: 0.15, safety: 0.35, surface: 0.2, character: 0.3 },
+    weights: { flow: 0.15, safety: 0.30, surface: 0.20, character: 0.20, scenic: 0.15 },
     flow: {
       lengthLogDenominator: 300,
       lengthLogNumerator: 10000,
@@ -505,7 +532,8 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
       arterial: 0.1,
       mixed: 0.2
     },
-    surfaceConfidenceMinFactor: 0.5
+    surfaceConfidenceMinFactor: 0.5,
+    scenicBoost: 1.0
   }
 };
 
@@ -518,7 +546,8 @@ export function getHardcodedDefaults(activityType: ActivityType): ScoringParams 
     safety: { ...p.safety },
     surfaceScores: { ...p.surfaceScores },
     characterScores: { ...p.characterScores },
-    surfaceConfidenceMinFactor: p.surfaceConfidenceMinFactor
+    surfaceConfidenceMinFactor: p.surfaceConfidenceMinFactor,
+    scenicBoost: p.scenicBoost
   };
 }
 

@@ -26,6 +26,7 @@ function makeCorridor(overrides: Partial<Corridor> = {}): Corridor {
       separationContinuity: 0,
       stopDensityPerKm: 1,
       turnsCount: 0,
+      scenicScore: 0,
     },
     edgeIds: ["e1", "e2"],
     startNodeId: "a",
@@ -299,6 +300,7 @@ describe("score-colored export", () => {
         safety: 0.6,
         surface: 0.9,
         character: 0.7,
+        scenic: 0,
       },
     };
     const network = makeNetwork([corridor]);
@@ -324,6 +326,7 @@ describe("score-colored export", () => {
         safety: 0.5,
         surface: 0.5,
         character: 0.5,
+        scenic: 0,
       },
     };
     const network = makeNetwork([corridor]);

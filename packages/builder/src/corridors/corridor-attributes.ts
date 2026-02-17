@@ -34,6 +34,7 @@ export function aggregateAttributes(
   let speedLimitLength = 0;
   let turnsCount = 0;
   let totalStopControls = 0;
+  let scenicLength = 0;
 
   for (let i = 0; i < edgeIds.length; i++) {
     const edge = graph.edges.get(edgeIds[i]!)!;
@@ -57,6 +58,11 @@ export function aggregateAttributes(
     }
     if (edge.attributes.infrastructure.isSeparated) {
       separatedLength += len;
+    }
+
+    // Scenic designation
+    if (edge.attributes.scenicDesignation) {
+      scenicLength += len;
     }
 
     // Speed limit
@@ -95,6 +101,7 @@ export function aggregateAttributes(
         : undefined,
     stopDensityPerKm: totalLength > 0 ? (totalStopControls / (totalLength / 1000)) : 0,
     turnsCount,
+    scenicScore: totalLength > 0 ? scenicLength / totalLength : 0,
   };
 }
 
