@@ -196,12 +196,32 @@ function corridorToFeature(
 }
 
 /**
- * Convert a score (0-1) to an HSL color string.
- * Red (0) -> Yellow (0.5) -> Green (1.0).
+ * Convert a score (0-1) to a hex color.
+ * Red (#cc2222) -> Yellow (#cccc22) -> Green (#22cc22).
+ *
+ * Uses hex instead of HSL for maximum viewer compatibility
+ * (geojson.io, QGIS, Mapbox, Kepler.gl all support hex).
  */
 function scoreToColor(score: number): string {
-  const hue = Math.round(score * 120);
-  return `hsl(${hue}, 80%, 45%)`;
+  // Clamp to [0,1]
+  const s = Math.max(0, Math.min(1, score));
+
+  let r: number, g: number, b: number;
+  if (s < 0.5) {
+    // Red to Yellow: R stays high, G rises
+    const t = s / 0.5;
+    r = 204;
+    g = Math.round(34 + t * 170); // 34 → 204
+    b = 34;
+  } else {
+    // Yellow to Green: R drops, G stays high
+    const t = (s - 0.5) / 0.5;
+    r = Math.round(204 - t * 170); // 204 → 34
+    g = 204;
+    b = 34;
+  }
+
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
 function connectorToFeature(

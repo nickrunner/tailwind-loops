@@ -332,12 +332,12 @@ describe("score-colored export", () => {
     const noScore = corridorNetworkToGeoJson(network, { includeConnectors: false });
     expect(noScore.features[0]!.properties["stroke"]).toBe("#e74c3c");
 
-    // With score: should use HSL gradient (score 0.5 = yellow = hsl(60,...))
+    // With score: should use hex gradient (score 0.5 = yellow = #cccc22)
     const withScore = corridorNetworkToGeoJson(network, {
       scoreActivity: "road-cycling",
       includeConnectors: false,
     });
-    expect(withScore.features[0]!.properties["stroke"]).toBe("hsl(60, 80%, 45%)");
+    expect(withScore.features[0]!.properties["stroke"]).toBe("#cccc22");
   });
 
   it("falls back to type color when corridor has no score for activity", () => {
