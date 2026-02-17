@@ -56,7 +56,7 @@ export interface CorridorBuildResult {
 }
 
 /** Major road classes used to determine connector crossesMajorRoad */
-const MAJOR_ROAD_CLASSES = new Set(["primary", "secondary", "trunk"]);
+const MAJOR_ROAD_CLASSES = new Set(["motorway", "primary", "secondary", "trunk"]);
 
 /**
  * Build corridors from a graph.
@@ -90,13 +90,18 @@ export async function buildCorridors(
   // We register ALL graph nodes touched by each entity (not just chain endpoints)
   // because connectors may attach at intermediate nodes of a corridor.
   const nodeToEntityIds = new Map<string, string[]>();
+  const nodeToEntityIdSets = new Map<string, Set<string>>();
 
   function registerNode(nodeId: string, entityId: string) {
-    const list = nodeToEntityIds.get(nodeId);
-    if (list) {
-      if (!list.includes(entityId)) list.push(entityId);
-    } else {
-      nodeToEntityIds.set(nodeId, [entityId]);
+    let idSet = nodeToEntityIdSets.get(nodeId);
+    if (!idSet) {
+      idSet = new Set<string>();
+      nodeToEntityIdSets.set(nodeId, idSet);
+      nodeToEntityIds.set(nodeId, []);
+    }
+    if (!idSet.has(entityId)) {
+      idSet.add(entityId);
+      nodeToEntityIds.get(nodeId)!.push(entityId);
     }
   }
 
@@ -130,9 +135,11 @@ export async function buildCorridors(
         oneWay: false, // placeholder
       });
 
-      // Determine directionality: corridor is one-way if its edges are one-way
-      const firstEdge = graph.edges.get(chain.edgeIds[0]!);
-      const isOneWay = firstEdge?.attributes.oneWay ?? false;
+      // Determine directionality: corridor is one-way only if ALL its edges are one-way
+      const isOneWay = chain.edgeIds.every((edgeId) => {
+        const edge = graph.edges.get(edgeId);
+        return edge?.attributes.oneWay === true;
+      });
 
       const corridor: Corridor = {
         id,
@@ -169,26 +176,27 @@ export async function buildCorridors(
     }
   }
 
-  // Step 5: Build adjacency graph
-  const adjacency = new Map<string, string[]>();
+  // Step 5: Build adjacency graph (using Sets for O(1) dedup, convert to arrays at end)
+  const adjacencySets = new Map<string, Set<string>>();
 
   for (const entityIds of nodeToEntityIds.values()) {
     if (entityIds.length < 2) continue;
 
-    // All entities sharing this node are adjacent to each other
     for (const a of entityIds) {
+      let setA = adjacencySets.get(a);
+      if (!setA) {
+        setA = new Set<string>();
+        adjacencySets.set(a, setA);
+      }
       for (const b of entityIds) {
-        if (a === b) continue;
-        let adjList = adjacency.get(a);
-        if (!adjList) {
-          adjList = [];
-          adjacency.set(a, adjList);
-        }
-        if (!adjList.includes(b)) {
-          adjList.push(b);
-        }
+        if (a !== b) setA.add(b);
       }
     }
+  }
+
+  const adjacency = new Map<string, string[]>();
+  for (const [id, neighbors] of adjacencySets) {
+    adjacency.set(id, [...neighbors]);
   }
 
   // Fill in corridorIds on connectors

@@ -24,6 +24,10 @@ export function aggregateAttributes(
   edgeIds: string[],
   graph: Graph
 ): CorridorAttributes {
+  if (edgeIds.length === 0) {
+    throw new Error("aggregateAttributes requires at least one edge");
+  }
+
   let totalLength = 0;
   const roadClassLengths = new Map<RoadClass, number>();
   const surfaceLengths = new Map<SurfaceType, number>();
