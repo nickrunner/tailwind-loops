@@ -18,6 +18,12 @@ export interface GraphNode {
   coordinate: Coordinate;
   /** OSM node ID if sourced from OSM */
   osmId?: string;
+  /** Node has a stop sign (OSM highway=stop) */
+  hasStop?: boolean;
+  /** Node has a traffic signal (OSM highway=traffic_signals) */
+  hasSignal?: boolean;
+  /** Node is a road crossing (highway=crossing or trail-road intersection) */
+  isCrossing?: boolean;
 }
 
 /** Road classification from OSM highway tag or equivalent */
@@ -115,6 +121,12 @@ export interface EdgeAttributes {
   oneWay: boolean;
   /** Length in meters */
   lengthMeters: number;
+  /** Number of stop signs along this edge (from OSM node tags) */
+  stopSignCount?: number;
+  /** Number of traffic signals along this edge (from OSM node tags) */
+  trafficSignalCount?: number;
+  /** Number of road crossings along this edge (explicit highway=crossing or implicit trail-road intersection) */
+  roadCrossingCount?: number;
 }
 
 /** Convenience accessor for surface type (most common use case) */

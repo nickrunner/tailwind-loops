@@ -33,6 +33,7 @@ export function aggregateAttributes(
   let weightedSpeedLimit = 0;
   let speedLimitLength = 0;
   let turnsCount = 0;
+  let totalStopControls = 0;
 
   for (let i = 0; i < edgeIds.length; i++) {
     const edge = graph.edges.get(edgeIds[i]!)!;
@@ -64,6 +65,13 @@ export function aggregateAttributes(
       speedLimitLength += len;
     }
 
+    // Count all stop controls: stop signs, traffic signals, and road crossings
+    // Edge-level counts cover intermediate nodes; endpoint crossing nodes are
+    // counted via GraphNode.isCrossing (deduplicated across shared junctions)
+    totalStopControls += (edge.attributes.stopSignCount ?? 0)
+      + (edge.attributes.trafficSignalCount ?? 0)
+      + (edge.attributes.roadCrossingCount ?? 0);
+
     // Turns: angle changes > 30 degrees between consecutive edges
     if (i > 0) {
       const prevEdge = graph.edges.get(edgeIds[i - 1]!)!;
@@ -85,7 +93,7 @@ export function aggregateAttributes(
       speedLimitLength > 0
         ? weightedSpeedLimit / speedLimitLength
         : undefined,
-    stopDensityPerKm: 0,
+    stopDensityPerKm: totalLength > 0 ? (totalStopControls / (totalLength / 1000)) : 0,
     turnsCount,
   };
 }

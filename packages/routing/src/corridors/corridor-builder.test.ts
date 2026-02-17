@@ -569,6 +569,76 @@ describe("buildCorridors", () => {
     expect(resConn!.attributes.crossesMajorRoad).toBe(false);
   });
 
+  it("connector hasStop is true when edge has stopSignCount", async () => {
+    const nodes: GraphNode[] = [
+      makeNode("a", 0, 0),
+      makeNode("b", 0, 0.001),
+    ];
+    const edges: GraphEdge[] = [
+      makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+        lengthMeters: 50, roadClass: "residential", stopSignCount: 1,
+      }),
+    ];
+    addTriangleStub("a", 0, 0, "sa", nodes, edges);
+    addTriangleStub("b", 0, 0.001, "sb", nodes, edges);
+
+    const graph = makeGraph(nodes, edges);
+    const result = await buildCorridors(graph, { minLengthMeters: 200 });
+
+    const connectors = [...result.network.connectors.values()];
+    const conn = connectors.find((c) => c.edgeIds.includes("e1"));
+    expect(conn).toBeDefined();
+    expect(conn!.attributes.hasStop).toBe(true);
+    expect(conn!.attributes.hasSignal).toBe(false);
+  });
+
+  it("connector hasSignal is true when edge has trafficSignalCount", async () => {
+    const nodes: GraphNode[] = [
+      makeNode("a", 0, 0),
+      makeNode("b", 0, 0.001),
+    ];
+    const edges: GraphEdge[] = [
+      makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+        lengthMeters: 50, roadClass: "primary", trafficSignalCount: 1,
+      }),
+    ];
+    addTriangleStub("a", 0, 0, "sa", nodes, edges);
+    addTriangleStub("b", 0, 0.001, "sb", nodes, edges);
+
+    const graph = makeGraph(nodes, edges);
+    const result = await buildCorridors(graph, { minLengthMeters: 200 });
+
+    const connectors = [...result.network.connectors.values()];
+    const conn = connectors.find((c) => c.edgeIds.includes("e1"));
+    expect(conn).toBeDefined();
+    expect(conn!.attributes.hasSignal).toBe(true);
+    // Signal at major road → crossingDifficulty = 0.3
+    expect(conn!.attributes.crossingDifficulty).toBe(0.3);
+  });
+
+  it("connector crossingDifficulty is 0.7 for major road without signal", async () => {
+    const nodes: GraphNode[] = [
+      makeNode("a", 0, 0),
+      makeNode("b", 0, 0.001),
+    ];
+    const edges: GraphEdge[] = [
+      makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+        lengthMeters: 50, roadClass: "primary",
+      }),
+    ];
+    addTriangleStub("a", 0, 0, "sa", nodes, edges);
+    addTriangleStub("b", 0, 0.001, "sb", nodes, edges);
+
+    const graph = makeGraph(nodes, edges);
+    const result = await buildCorridors(graph, { minLengthMeters: 200 });
+
+    const connectors = [...result.network.connectors.values()];
+    const conn = connectors.find((c) => c.edgeIds.includes("e1"));
+    expect(conn).toBeDefined();
+    expect(conn!.attributes.crossesMajorRoad).toBe(true);
+    expect(conn!.attributes.crossingDifficulty).toBe(0.7);
+  });
+
   it("corridors have geometry", async () => {
     const { graph } = makeStraightRoad(3, 100);
     const result = await buildCorridors(graph, { minLengthMeters: 200 });

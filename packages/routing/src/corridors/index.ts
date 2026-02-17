@@ -319,6 +319,8 @@ function buildConnectorAttributes(
 ): ConnectorAttributes {
   let totalLength = 0;
   let crossesMajorRoad = false;
+  let hasSignal = false;
+  let hasStop = false;
 
   for (const edgeId of edgeIds) {
     const edge = graph.edges.get(edgeId)!;
@@ -326,14 +328,35 @@ function buildConnectorAttributes(
     if (MAJOR_ROAD_CLASSES.has(edge.attributes.roadClass)) {
       crossesMajorRoad = true;
     }
+    // Use edge-level counts (includes intermediate OSM nodes)
+    if ((edge.attributes.trafficSignalCount ?? 0) > 0) hasSignal = true;
+    if ((edge.attributes.stopSignCount ?? 0) > 0) hasStop = true;
+    if ((edge.attributes.roadCrossingCount ?? 0) > 0) hasStop = true;
   }
+
+  // Also check endpoint graph nodes (they carry tags from the split-point OSM nodes)
+  if (edgeIds.length > 0) {
+    const firstEdge = graph.edges.get(edgeIds[0]!)!;
+    const lastEdge = graph.edges.get(edgeIds[edgeIds.length - 1]!)!;
+    const startNode = graph.nodes.get(firstEdge.fromNodeId);
+    const endNode = graph.nodes.get(lastEdge.toNodeId);
+    if (startNode?.hasSignal || endNode?.hasSignal) hasSignal = true;
+    if (startNode?.hasStop || endNode?.hasStop) hasStop = true;
+    if (startNode?.isCrossing || endNode?.isCrossing) hasStop = true;
+  }
+
+  // Crossing difficulty factors in signals/stops
+  let crossingDifficulty = 0.1;
+  if (crossesMajorRoad) crossingDifficulty = hasSignal ? 0.3 : 0.7;
+  else if (hasStop) crossingDifficulty = 0.2;
+  else if (hasSignal) crossingDifficulty = 0.15;
 
   return {
     lengthMeters: totalLength,
     crossesMajorRoad,
-    hasSignal: false,
-    hasStop: false,
-    crossingDifficulty: crossesMajorRoad ? 0.5 : 0.1,
+    hasSignal,
+    hasStop,
+    crossingDifficulty,
   };
 }
 
