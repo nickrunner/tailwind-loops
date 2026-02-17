@@ -12,6 +12,7 @@ import type {
   CorridorType,
   Connector,
 } from "../domain/corridor.js";
+import type { ActivityType } from "../domain/intent.js";
 
 /** GeoJSON types */
 interface GeoJsonFeatureCollection {
@@ -53,6 +54,8 @@ export interface CorridorGeoJsonOptions {
   minLengthMeters?: number;
   /** Include stroke color and width properties for direct map rendering */
   includeStyle?: boolean;
+  /** When set, color corridors by their score for this activity (red→yellow→green gradient) */
+  scoreActivity?: ActivityType;
 }
 
 /**
@@ -74,6 +77,7 @@ export function corridorNetworkToGeoJson(
     corridorTypes,
     minLengthMeters,
     includeStyle = true,
+    scoreActivity,
   } = options;
 
   const features: GeoJsonFeature[] = [];
@@ -88,7 +92,7 @@ export function corridorNetworkToGeoJson(
     )
       continue;
 
-    features.push(corridorToFeature(corridor, includeStyle));
+    features.push(corridorToFeature(corridor, includeStyle, scoreActivity));
   }
 
   if (includeConnectors) {
@@ -132,10 +136,10 @@ export function corridorsByTypeToGeoJson(
 
 function corridorToFeature(
   corridor: Corridor,
-  includeStyle: boolean
+  includeStyle: boolean,
+  scoreActivity?: ActivityType
 ): GeoJsonFeature {
   const { attributes } = corridor;
-  const color = CORRIDOR_TYPE_COLORS[corridor.type] ?? "#888888";
 
   const properties: Record<string, unknown> = {
     id: corridor.id,
@@ -160,7 +164,22 @@ function corridorToFeature(
     properties.speedLimit = attributes.averageSpeedLimit;
   }
 
+  // Add score properties when scoreActivity is set
+  const score =
+    scoreActivity && corridor.scores?.[scoreActivity];
+
+  if (score) {
+    properties.scoreOverall = Math.round(score.overall * 1000) / 1000;
+    properties.scoreFlow = Math.round(score.flow * 1000) / 1000;
+    properties.scoreSafety = Math.round(score.safety * 1000) / 1000;
+    properties.scoreSurface = Math.round(score.surface * 1000) / 1000;
+    properties.scoreCharacter = Math.round(score.character * 1000) / 1000;
+  }
+
   if (includeStyle) {
+    const color = score
+      ? scoreToColor(score.overall)
+      : CORRIDOR_TYPE_COLORS[corridor.type] ?? "#888888";
     properties.stroke = color;
     properties["stroke-width"] = strokeWidthForType(corridor.type);
     properties["stroke-opacity"] = 0.85;
@@ -174,6 +193,15 @@ function corridorToFeature(
     },
     properties,
   };
+}
+
+/**
+ * Convert a score (0-1) to an HSL color string.
+ * Red (0) -> Yellow (0.5) -> Green (1.0).
+ */
+function scoreToColor(score: number): string {
+  const hue = Math.round(score * 120);
+  return `hsl(${hue}, 80%, 45%)`;
 }
 
 function connectorToFeature(
