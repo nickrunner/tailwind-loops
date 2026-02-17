@@ -19,23 +19,28 @@ const DATA_DIR = resolve(__dirname, "../../../data");
 
 const args = process.argv.slice(2);
 const corridorsOnly = args.includes("--corridors-only");
-const typeFilter = args.find((a) => a.startsWith("--type="));
-const activityFilter = args.find((a) => a.startsWith("--activity="));
-const scoreFilter = args.find((a) => a.startsWith("--score="));
 
-const scoreActivity = scoreFilter
-  ? (scoreFilter.split("=")[1] as ActivityType)
-  : undefined;
+function getArgValue(flag: string): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith(`--${flag}=`)) {
+      return args[i].split("=")[1];
+    }
+    if (args[i] === `--${flag}` && i + 1 < args.length && !args[i + 1].startsWith("--")) {
+      return args[i + 1];
+    }
+  }
+  return undefined;
+}
 
-const activity = activityFilter
-  ? (activityFilter.split("=")[1] as ActivityType)
-  : undefined;
+const scoreActivity = getArgValue("score") as ActivityType | undefined;
+const activity = getArgValue("activity") as ActivityType | undefined;
 
 // --activity takes precedence over --type
+const typeFilterValue = getArgValue("type");
 const types = activity
   ? CORRIDOR_TYPES_BY_ACTIVITY[activity]
-  : typeFilter
-    ? (typeFilter.split("=")[1]!.split(",") as CorridorType[])
+  : typeFilterValue
+    ? (typeFilterValue.split(",") as CorridorType[])
     : undefined;
 
 function getOutputDir(): string {

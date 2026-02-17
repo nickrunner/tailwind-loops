@@ -32,10 +32,7 @@ export function scoreFlow(corridor: Corridor): number {
   const { lengthMeters, stopDensityPerKm } = corridor.attributes;
 
   // Length component: log curve scaled so 200m≈0.07, 1km≈0.46, 3km≈0.72, 10km≈0.95
-  const lengthScore = Math.min(
-    1,
-    Math.log(1 + lengthMeters / 300) / Math.log(1 + 10000 / 300),
-  );
+  const lengthScore = Math.min(1, Math.log(1 + lengthMeters / 300) / Math.log(1 + 10000 / 300));
 
   // Stop component: exponential decay e^(-0.2 * density)
   const stopScore = Math.exp(-0.2 * stopDensityPerKm);
@@ -52,7 +49,7 @@ const SPEED_LIMIT_SCORES: [number, number][] = [
   [40, 0.8],
   [50, 0.6],
   [60, 0.3],
-  [80, 0.1],
+  [80, 0.1]
 ];
 
 function scoreSpeedLimit(speedLimit: number | undefined): number {
@@ -75,7 +72,7 @@ const ROAD_CLASS_SAFETY: Record<string, number> = {
   track: 0.6,
   primary: 0.2,
   trunk: 0.0,
-  motorway: 0.0,
+  motorway: 0.0
 };
 
 function scoreRoadClassSafety(roadClass: RoadClass): number {
@@ -91,7 +88,7 @@ export function scoreSafety(corridor: Corridor): number {
     infrastructureContinuity,
     separationContinuity,
     averageSpeedLimit,
-    predominantRoadClass,
+    predominantRoadClass
   } = corridor.attributes;
 
   return (
@@ -116,7 +113,7 @@ const SURFACE_SCORES_ROAD_CYCLING: Record<SurfaceType, number> = {
   gravel: 0.0,
   dirt: 0.0,
   unpaved: 0.0,
-  unknown: 0.3,
+  unknown: 0.3
 };
 
 /**
@@ -129,7 +126,7 @@ const SURFACE_SCORES_GRAVEL_CYCLING: Record<SurfaceType, number> = {
   asphalt: 0.4,
   concrete: 0.3,
   paved: 0.4,
-  unknown: 0.4,
+  unknown: 0.4
 };
 
 const SURFACE_SCORES_RUNNING: Record<SurfaceType, number> = {
@@ -139,7 +136,7 @@ const SURFACE_SCORES_RUNNING: Record<SurfaceType, number> = {
   paved: 0.7,
   concrete: 0.6,
   unpaved: 0.6,
-  unknown: 0.4,
+  unknown: 0.4
 };
 
 const SURFACE_SCORES_WALKING: Record<SurfaceType, number> = {
@@ -149,24 +146,21 @@ const SURFACE_SCORES_WALKING: Record<SurfaceType, number> = {
   gravel: 0.8,
   dirt: 0.8,
   unpaved: 0.6,
-  unknown: 0.5,
+  unknown: 0.5
 };
 
 const SURFACE_SCORES: Record<ActivityType, Record<SurfaceType, number>> = {
   "road-cycling": SURFACE_SCORES_ROAD_CYCLING,
   "gravel-cycling": SURFACE_SCORES_GRAVEL_CYCLING,
   running: SURFACE_SCORES_RUNNING,
-  walking: SURFACE_SCORES_WALKING,
+  walking: SURFACE_SCORES_WALKING
 };
 
 /**
  * Score surface suitability for a given activity.
  * Raw score is scaled by confidence: score * (0.5 + 0.5 * confidence).
  */
-export function scoreSurface(
-  corridor: Corridor,
-  activityType: ActivityType,
-): number {
+export function scoreSurface(corridor: Corridor, activityType: ActivityType): number {
   const { predominantSurface, surfaceConfidence } = corridor.attributes;
   const table = SURFACE_SCORES[activityType];
   const rawScore = table[predominantSurface] ?? 0.4;
@@ -188,7 +182,7 @@ const CHARACTER_SCORES_ROAD_CYCLING: Record<CorridorType, number> = {
   arterial: 0.3,
   trail: 0.3,
   path: 0.1,
-  mixed: 0.2,
+  mixed: 0.2
 };
 
 /**
@@ -197,10 +191,11 @@ const CHARACTER_SCORES_ROAD_CYCLING: Record<CorridorType, number> = {
 const CHARACTER_SCORES_GRAVEL_CYCLING: Record<CorridorType, number> = {
   trail: 1.0,
   "quiet-road": 0.8,
-  path: 0.6,
+  mixed: 0.7,
   collector: 0.4,
-  mixed: 0.3,
-  arterial: 0.1,
+  path: 0.1,
+
+  arterial: 0.1
 };
 
 const CHARACTER_SCORES_RUNNING: Record<CorridorType, number> = {
@@ -209,7 +204,7 @@ const CHARACTER_SCORES_RUNNING: Record<CorridorType, number> = {
   "quiet-road": 0.7,
   collector: 0.3,
   arterial: 0.1,
-  mixed: 0.2,
+  mixed: 0.2
 };
 
 const CHARACTER_SCORES_WALKING: Record<CorridorType, number> = {
@@ -218,23 +213,20 @@ const CHARACTER_SCORES_WALKING: Record<CorridorType, number> = {
   "quiet-road": 0.8,
   collector: 0.3,
   arterial: 0.1,
-  mixed: 0.2,
+  mixed: 0.2
 };
 
 const CHARACTER_SCORES: Record<ActivityType, Record<CorridorType, number>> = {
   "road-cycling": CHARACTER_SCORES_ROAD_CYCLING,
   "gravel-cycling": CHARACTER_SCORES_GRAVEL_CYCLING,
   running: CHARACTER_SCORES_RUNNING,
-  walking: CHARACTER_SCORES_WALKING,
+  walking: CHARACTER_SCORES_WALKING
 };
 
 /**
  * Score the character/type preference for a given activity.
  */
-export function scoreCharacter(
-  corridor: Corridor,
-  activityType: ActivityType,
-): number {
+export function scoreCharacter(corridor: Corridor, activityType: ActivityType): number {
   const table = CHARACTER_SCORES[activityType];
   return table[corridor.type] ?? 0.3;
 }
@@ -256,7 +248,7 @@ export const DEFAULT_SCORING_WEIGHTS: Record<ActivityType, ScoringWeights> = {
   "road-cycling": { flow: 0.3, safety: 0.2, surface: 0.25, character: 0.25 },
   "gravel-cycling": { flow: 0.25, safety: 0.2, surface: 0.3, character: 0.25 },
   running: { flow: 0.2, safety: 0.3, surface: 0.25, character: 0.25 },
-  walking: { flow: 0.15, safety: 0.35, surface: 0.2, character: 0.3 },
+  walking: { flow: 0.15, safety: 0.35, surface: 0.2, character: 0.3 }
 };
 
 /**
@@ -266,7 +258,7 @@ export const DEFAULT_SCORING_WEIGHTS: Record<ActivityType, ScoringWeights> = {
 export function scoreCorridor(
   corridor: Corridor,
   activityType: ActivityType,
-  weights?: ScoringWeights,
+  weights?: ScoringWeights
 ): CorridorScore {
   const w = weights ?? DEFAULT_SCORING_WEIGHTS[activityType];
 
@@ -275,11 +267,7 @@ export function scoreCorridor(
   const surface = scoreSurface(corridor, activityType);
   const character = scoreCharacter(corridor, activityType);
 
-  const overall =
-    w.flow * flow +
-    w.safety * safety +
-    w.surface * surface +
-    w.character * character;
+  const overall = w.flow * flow + w.safety * safety + w.surface * surface + w.character * character;
 
   return { overall: Math.max(0, Math.min(1, overall)), flow, safety, surface, character };
 }
@@ -291,7 +279,7 @@ export function scoreCorridor(
 export function scoreCorridors(
   corridors: Map<string, Corridor>,
   activityType: ActivityType,
-  weights?: ScoringWeights,
+  weights?: ScoringWeights
 ): void {
   for (const corridor of corridors.values()) {
     const score = scoreCorridor(corridor, activityType, weights);

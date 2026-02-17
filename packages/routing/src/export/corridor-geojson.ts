@@ -82,17 +82,39 @@ export function corridorNetworkToGeoJson(
 
   const features: GeoJsonFeature[] = [];
 
+  // Collect filtered corridors first so we can compute score percentiles
+  const filteredCorridors: Corridor[] = [];
   for (const corridor of network.corridors.values()) {
     if (corridor.geometry.length < 2) continue;
-
     if (corridorTypes && !corridorTypes.includes(corridor.type)) continue;
     if (
       minLengthMeters !== undefined &&
       corridor.attributes.lengthMeters < minLengthMeters
     )
       continue;
+    filteredCorridors.push(corridor);
+  }
 
-    features.push(corridorToFeature(corridor, includeStyle, scoreActivity));
+  // Compute p5/p95 percentile range for score normalization
+  let scoreRange: { p5: number; p95: number } | undefined;
+  if (scoreActivity) {
+    const scores: number[] = [];
+    for (const c of filteredCorridors) {
+      const s = c.scores?.[scoreActivity];
+      if (s) scores.push(s.overall);
+    }
+    if (scores.length > 0) {
+      scores.sort((a, b) => a - b);
+      const p5 = scores[Math.floor(scores.length * 0.05)]!;
+      const p95 = scores[Math.floor(scores.length * 0.95)]!;
+      if (p95 > p5) {
+        scoreRange = { p5, p95 };
+      }
+    }
+  }
+
+  for (const corridor of filteredCorridors) {
+    features.push(corridorToFeature(corridor, includeStyle, scoreActivity, scoreRange));
   }
 
   if (includeConnectors) {
@@ -137,7 +159,8 @@ export function corridorsByTypeToGeoJson(
 function corridorToFeature(
   corridor: Corridor,
   includeStyle: boolean,
-  scoreActivity?: ActivityType
+  scoreActivity?: ActivityType,
+  scoreRange?: { p5: number; p95: number }
 ): GeoJsonFeature {
   const { attributes } = corridor;
 
@@ -177,9 +200,18 @@ function corridorToFeature(
   }
 
   if (includeStyle) {
-    const color = score
-      ? scoreToColor(score.overall)
-      : CORRIDOR_TYPE_COLORS[corridor.type] ?? "#888888";
+    let color: string;
+    if (score) {
+      let normalized = score.overall;
+      if (scoreRange) {
+        normalized = Math.max(0, Math.min(1,
+          (score.overall - scoreRange.p5) / (scoreRange.p95 - scoreRange.p5)
+        ));
+      }
+      color = scoreToColor(normalized);
+    } else {
+      color = CORRIDOR_TYPE_COLORS[corridor.type] ?? "#888888";
+    }
     properties["stroke"] = color;
     properties["stroke-width"] = strokeWidthForType(corridor.type);
     properties["stroke-opacity"] = 0.85;
