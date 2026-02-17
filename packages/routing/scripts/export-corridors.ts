@@ -1,6 +1,6 @@
 /**
  * Export corridor network as color-coded GeoJSON.
- * Usage: npx tsx scripts/export-corridors.ts [--corridors-only] [--type trail,path] [--activity cycling|running|walking]
+ * Usage: npx tsx scripts/export-corridors.ts [--corridors-only] [--type trail,path] [--activity road-cycling|gravel-cycling|running|walking] [--score=road-cycling|gravel-cycling|running|walking]
  */
 import { ingestOsm } from "../src/ingestion/index.js";
 import { buildCorridors } from "../src/corridors/index.js";
@@ -21,6 +21,11 @@ const args = process.argv.slice(2);
 const corridorsOnly = args.includes("--corridors-only");
 const typeFilter = args.find((a) => a.startsWith("--type="));
 const activityFilter = args.find((a) => a.startsWith("--activity="));
+const scoreFilter = args.find((a) => a.startsWith("--score="));
+
+const scoreActivity = scoreFilter
+  ? (scoreFilter.split("=")[1] as ActivityType)
+  : undefined;
 
 const activity = activityFilter
   ? (activityFilter.split("=")[1] as ActivityType)
@@ -63,6 +68,7 @@ async function main() {
   const geojson = corridorNetworkToGeoJson(network, {
     includeConnectors: !corridorsOnly,
     corridorTypes: types,
+    scoreActivity,
   });
 
   const outputDir = getOutputDir();

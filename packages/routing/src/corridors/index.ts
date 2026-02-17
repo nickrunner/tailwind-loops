@@ -15,6 +15,7 @@ import type {
   Connector,
   ConnectorAttributes,
 } from "../domain/corridor.js";
+import type { ActivityType } from "../domain/intent.js";
 import {
   buildChains,
   computeUndirectedDegree,
@@ -25,6 +26,7 @@ import {
   deriveName,
   buildCorridorGeometry,
 } from "./corridor-attributes.js";
+import { scoreCorridor } from "./scoring.js";
 
 /** Options for corridor construction */
 export interface CorridorBuilderOptions {
@@ -215,7 +217,16 @@ export async function buildCorridors(
     connector.corridorIds = adjIds.filter((id) => corridors.has(id));
   }
 
-  // Step 6: Compute stats
+  // Step 6: Score corridors for all activity types (single pass)
+  const activityTypes: ActivityType[] = ["road-cycling", "gravel-cycling", "running", "walking"];
+  for (const corridor of corridors.values()) {
+    corridor.scores = {};
+    for (const activity of activityTypes) {
+      corridor.scores[activity] = scoreCorridor(corridor, activity);
+    }
+  }
+
+  // Step 7: Compute stats
   let totalLength = 0;
   for (const c of corridors.values()) {
     totalLength += c.attributes.lengthMeters;
@@ -340,3 +351,13 @@ export {
   buildCorridorGeometry,
   douglasPeucker,
 } from "./corridor-attributes.js";
+export {
+  scoreFlow,
+  scoreSafety,
+  scoreSurface,
+  scoreCharacter,
+  scoreCorridor,
+  scoreCorridors,
+  DEFAULT_SCORING_WEIGHTS,
+} from "./scoring.js";
+export type { ScoringWeights } from "./scoring.js";
