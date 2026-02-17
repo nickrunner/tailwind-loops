@@ -116,6 +116,8 @@ let debounceTimer = null;
 let corridorLayer = null;
 let map = null;
 let lastGeoJson = null;
+let moveDebounceTimer = null;
+let loadInFlight = false;
 
 const ALL_CORRIDOR_TYPES = ['trail', 'path', 'quiet-road', 'collector', 'arterial', 'mixed'];
 
@@ -484,6 +486,9 @@ async function init() {
 
   // Wire save button
   document.getElementById('save-btn').addEventListener('click', saveToCode);
+
+  // Auto-load corridors when the map view changes
+  map.on('moveend', onMoveEnd);
 }
 
 async function loadDefaults() {
@@ -532,6 +537,58 @@ async function saveToCode() {
     btn.textContent = 'Save to Code';
     btn.disabled = false;
   }, 2000);
+}
+
+// ---------------------------------------------------------------------------
+// Auto-load corridors on map pan/zoom
+// ---------------------------------------------------------------------------
+
+function onMoveEnd() {
+  clearTimeout(moveDebounceTimer);
+  moveDebounceTimer = setTimeout(loadCurrentView, 800);
+}
+
+async function loadCurrentView() {
+  if (loadInFlight) return;
+
+  const bounds = map.getBounds();
+  const viewBbox = {
+    minLat: bounds.getSouthWest().lat,
+    maxLat: bounds.getNorthEast().lat,
+    minLng: bounds.getSouthWest().lng,
+    maxLng: bounds.getNorthEast().lng,
+  };
+
+  loadInFlight = true;
+  document.getElementById('status').textContent = 'Fetching corridors...';
+
+  try {
+    const res = await fetch('/api/load-location', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bbox: viewBbox }),
+    });
+    const result = await res.json();
+
+    if (result.error) {
+      document.getElementById('footer').textContent = `Load error: ${result.error}`;
+      document.getElementById('status').textContent = 'Error';
+    } else if (result.cached) {
+      // Area already covered — just re-score existing corridors
+      document.getElementById('status').textContent = 'Ready';
+      await doScore();
+    } else {
+      document.getElementById('footer').textContent =
+        `Loaded ${result.corridorCount} corridors, ${result.connectorCount} connectors (${result.timeMs}ms)`;
+      document.getElementById('status').textContent = 'Ready';
+      await doScore();
+    }
+  } catch (err) {
+    document.getElementById('footer').textContent = `Load error: ${err.message}`;
+    document.getElementById('status').textContent = 'Error';
+  }
+
+  loadInFlight = false;
 }
 
 init();

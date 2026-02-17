@@ -394,16 +394,16 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
     weights: { flow: 0.3, safety: 0.2, surface: 0.25, character: 0.25 },
     flow: { lengthLogDenominator: 300, lengthLogNumerator: 10000, stopDecayRate: 0.2, lengthBlend: 0.6 },
     safety: { infrastructure: 0.3, separation: 0.3, speedLimit: 0.2, roadClass: 0.2 },
-    surfaceScores: { asphalt: 1.0, concrete: 0.9, paved: 0.9, gravel: 0.0, dirt: 0.0, unpaved: 0.0, unknown: 0.3 },
-    characterScores: { "quiet-road": 1.0, collector: 0.7, mixed: 0.5, arterial: 0.3, trail: 0.3, path: 0.1 },
+    surfaceScores: { asphalt: 1, concrete: 0.9, paved: 0.9, gravel: 0, dirt: 0, unpaved: 0, unknown: 0.3 },
+    characterScores: { "quiet-road": 1, collector: 0.7, mixed: 0.5, arterial: 0.3, trail: 0.3, path: 0.1 },
     surfaceConfidenceMinFactor: 0.5,
   },
   "gravel-cycling": {
     weights: { flow: 0.25, safety: 0.2, surface: 0.3, character: 0.25 },
     flow: { lengthLogDenominator: 300, lengthLogNumerator: 10000, stopDecayRate: 0.2, lengthBlend: 0.6 },
     safety: { infrastructure: 0.3, separation: 0.3, speedLimit: 0.2, roadClass: 0.2 },
-    surfaceScores: { gravel: 1.0, dirt: 0.9, unpaved: 0.8, asphalt: 0.4, concrete: 0.3, paved: 0.4, unknown: 0.4 },
-    characterScores: { trail: 1.0, "quiet-road": 0.8, mixed: 0.7, collector: 0.4, path: 0.1, arterial: 0.1 },
+    surfaceScores: { gravel: 1, dirt: 0.9, unpaved: 0.8, asphalt: 0.4, concrete: 0.3, paved: 0.4, unknown: 0.4 },
+    characterScores: { trail: 0.17, "quiet-road": 0.8, mixed: 0.7, collector: 0.4, path: 0, arterial: 0.1 },
     surfaceConfidenceMinFactor: 0.5,
   },
   running: {
@@ -411,7 +411,7 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
     flow: { lengthLogDenominator: 300, lengthLogNumerator: 10000, stopDecayRate: 0.2, lengthBlend: 0.6 },
     safety: { infrastructure: 0.3, separation: 0.3, speedLimit: 0.2, roadClass: 0.2 },
     surfaceScores: { dirt: 0.9, gravel: 0.8, asphalt: 0.7, paved: 0.7, concrete: 0.6, unpaved: 0.6, unknown: 0.4 },
-    characterScores: { trail: 1.0, path: 0.9, "quiet-road": 0.7, collector: 0.3, arterial: 0.1, mixed: 0.2 },
+    characterScores: { trail: 1, path: 0.9, "quiet-road": 0.7, collector: 0.3, arterial: 0.1, mixed: 0.2 },
     surfaceConfidenceMinFactor: 0.5,
   },
   walking: {
@@ -419,7 +419,7 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
     flow: { lengthLogDenominator: 300, lengthLogNumerator: 10000, stopDecayRate: 0.2, lengthBlend: 0.6 },
     safety: { infrastructure: 0.3, separation: 0.3, speedLimit: 0.2, roadClass: 0.2 },
     surfaceScores: { paved: 0.8, asphalt: 0.7, concrete: 0.7, gravel: 0.8, dirt: 0.8, unpaved: 0.6, unknown: 0.5 },
-    characterScores: { path: 1.0, trail: 0.9, "quiet-road": 0.8, collector: 0.3, arterial: 0.1, mixed: 0.2 },
+    characterScores: { path: 1, trail: 0.9, "quiet-road": 0.8, collector: 0.3, arterial: 0.1, mixed: 0.2 },
     surfaceConfidenceMinFactor: 0.5,
   },
 };

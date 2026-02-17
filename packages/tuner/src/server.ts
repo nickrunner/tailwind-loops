@@ -5,15 +5,30 @@
  * that lets you tweak scoring parameters and see the results on a map
  * in real time.
  *
+ * Data sources (tried in order):
+ * 1. Local PBF file (if data/grand-rapids.osm.pbf exists)
+ * 2. Overpass API for a default location (Grand Rapids, MI)
+ *
+ * The UI supports loading corridors for the current map view via Overpass.
+ *
  * Usage: pnpm start
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ingestOsm, buildCorridors } from "@tailwind-loops/builder";
+import {
+  buildCorridors,
+  buildGraphFromOsm,
+  parseOsmPbf,
+  bboxFromCenter,
+  expandBbox,
+  fetchOverpassData,
+  parseOverpassResponse,
+} from "@tailwind-loops/builder";
+import type { OsmNode, OsmWay, BoundingBox } from "@tailwind-loops/builder";
 import {
   getDefaultScoringParams,
   scoreCorridorWithParams,
@@ -33,25 +48,168 @@ const SCORING_TS_PATH = resolve(__dirname, "../../routing/src/corridors/scoring.
 
 const PORT = parseInt(process.env["PORT"] ?? "3456", 10);
 
+// Default location: downtown Grand Rapids, MI
+const DEFAULT_CENTER = { lat: 42.9634, lng: -85.6681 };
+const DEFAULT_RADIUS_KM = 5;
+
 // ---------------------------------------------------------------------------
-// Data loading (runs once at startup)
+// Data loading — accumulates raw OSM elements across fetches so that
+// corridors are always built from a single contiguous graph.
 // ---------------------------------------------------------------------------
 
 let network: CorridorNetwork;
+let loadingInProgress = false;
 
-async function loadData(): Promise<void> {
-  console.log("Ingesting Grand Rapids OSM data...");
-  const { graph, stats: ingestStats } = await ingestOsm({ pbfPath: PBF_PATH });
+// Accumulated raw elements (deduplicated by OSM ID)
+const accumulatedNodes = new Map<number, OsmNode>();
+const accumulatedWays = new Map<number, OsmWay>();
+// Union of all buffered bboxes we've fetched — used to skip redundant queries
+let coveredBbox: BoundingBox | null = null;
+
+function bboxContains(outer: BoundingBox, inner: BoundingBox): boolean {
+  return (
+    inner.minLat >= outer.minLat &&
+    inner.maxLat <= outer.maxLat &&
+    inner.minLng >= outer.minLng &&
+    inner.maxLng <= outer.maxLng
+  );
+}
+
+function unionBbox(a: BoundingBox, b: BoundingBox): BoundingBox {
+  return {
+    minLat: Math.min(a.minLat, b.minLat),
+    maxLat: Math.max(a.maxLat, b.maxLat),
+    minLng: Math.min(a.minLng, b.minLng),
+    maxLng: Math.max(a.maxLng, b.maxLng),
+  };
+}
+
+/** Rebuild graph + corridors from all accumulated elements. */
+async function rebuildFromAccumulated(): Promise<{
+  corridorCount: number;
+  connectorCount: number;
+}> {
+  async function* allElements(): AsyncGenerator<OsmNode | OsmWay> {
+    for (const node of accumulatedNodes.values()) yield node;
+    for (const way of accumulatedWays.values()) yield way;
+  }
+
   console.log(
-    `  Graph: ${ingestStats.nodesCount.toLocaleString()} nodes, ${ingestStats.edgesCount.toLocaleString()} edges`,
+    `  Building graph from ${accumulatedNodes.size.toLocaleString()} nodes, ${accumulatedWays.size.toLocaleString()} ways...`,
+  );
+  const graphStart = Date.now();
+  const { graph, stats: graphStats } = await buildGraphFromOsm(allElements());
+  console.log(
+    `  Graph built in ${Date.now() - graphStart}ms: ${graphStats.edgesCount.toLocaleString()} edges`,
   );
 
-  console.log("Building corridors...");
+  console.log("  Building corridors...");
+  const corridorStart = Date.now();
   const { network: net, stats } = await buildCorridors(graph);
   network = net;
   console.log(
-    `  ${stats.corridorCount.toLocaleString()} corridors, ${stats.connectorCount.toLocaleString()} connectors`,
+    `  Corridors built in ${Date.now() - corridorStart}ms: ${stats.corridorCount.toLocaleString()} corridors, ${stats.connectorCount.toLocaleString()} connectors`,
   );
+
+  return {
+    corridorCount: stats.corridorCount,
+    connectorCount: stats.connectorCount,
+  };
+}
+
+/** Infer covered bbox from accumulated node coordinates. */
+function inferCoveredBbox(): BoundingBox | null {
+  if (accumulatedNodes.size === 0) return null;
+  let minLat = Infinity,
+    maxLat = -Infinity;
+  let minLng = Infinity,
+    maxLng = -Infinity;
+  for (const node of accumulatedNodes.values()) {
+    if (node.lat < minLat) minLat = node.lat;
+    if (node.lat > maxLat) maxLat = node.lat;
+    if (node.lon < minLng) minLng = node.lon;
+    if (node.lon > maxLng) maxLng = node.lon;
+  }
+  return { minLat, maxLat, minLng, maxLng };
+}
+
+/** Load data at startup: try PBF first, fall back to Overpass. */
+async function loadData(): Promise<void> {
+  if (existsSync(PBF_PATH)) {
+    console.log("Ingesting OSM data from PBF...");
+    const elements = parseOsmPbf(PBF_PATH);
+    for await (const el of elements) {
+      if (el.type === "node") accumulatedNodes.set(el.id, el);
+      else accumulatedWays.set(el.id, el);
+    }
+    console.log(
+      `  Collected ${accumulatedNodes.size.toLocaleString()} nodes, ${accumulatedWays.size.toLocaleString()} ways`,
+    );
+
+    console.log("Building corridors...");
+    const result = await rebuildFromAccumulated();
+    coveredBbox = inferCoveredBbox();
+    console.log(
+      `  ${result.corridorCount.toLocaleString()} corridors, ${result.connectorCount.toLocaleString()} connectors`,
+    );
+  } else {
+    console.log("No PBF file found, using Overpass API...");
+    await fetchAndMerge(bboxFromCenter(DEFAULT_CENTER, DEFAULT_RADIUS_KM));
+  }
+}
+
+function fmtBbox(bbox: BoundingBox): string {
+  return `[${bbox.minLat.toFixed(4)},${bbox.minLng.toFixed(4)} → ${bbox.maxLat.toFixed(4)},${bbox.maxLng.toFixed(4)}]`;
+}
+
+/**
+ * Fetch Overpass data for an area, merge with accumulated elements,
+ * and rebuild corridors. Returns cached: true if the area was already covered.
+ */
+async function fetchAndMerge(
+  viewBbox: BoundingBox,
+): Promise<{ cached: boolean; corridorCount: number; connectorCount: number; timeMs: number }> {
+  // Already covered? Skip the fetch.
+  if (coveredBbox && bboxContains(coveredBbox, viewBbox)) {
+    console.log(`[cache hit] ${fmtBbox(viewBbox)} — already covered`);
+    return {
+      cached: true,
+      corridorCount: network.corridors.size,
+      connectorCount: network.connectors.size,
+      timeMs: 0,
+    };
+  }
+
+  const start = Date.now();
+  const bufferedBbox = expandBbox(viewBbox, 2);
+
+  console.log(`[fetch] Querying Overpass for ${fmtBbox(viewBbox)} (buffered: ${fmtBbox(bufferedBbox)})...`);
+  const fetchStart = Date.now();
+  const response = await fetchOverpassData(bufferedBbox);
+  const fetchMs = Date.now() - fetchStart;
+  console.log(`  Overpass responded in ${fetchMs}ms`);
+
+  // Parse and merge into accumulated elements
+  const prevNodes = accumulatedNodes.size;
+  const prevWays = accumulatedWays.size;
+  for await (const el of parseOverpassResponse(response)) {
+    if (el.type === "node") accumulatedNodes.set(el.id, el);
+    else accumulatedWays.set(el.id, el);
+  }
+  const newNodes = accumulatedNodes.size - prevNodes;
+  const newWays = accumulatedWays.size - prevWays;
+  console.log(`  Merged ${newNodes.toLocaleString()} new nodes, ${newWays.toLocaleString()} new ways`);
+
+  // Rebuild corridors from the full accumulated graph
+  const result = await rebuildFromAccumulated();
+
+  // Expand covered bbox
+  coveredBbox = coveredBbox ? unionBbox(coveredBbox, bufferedBbox) : bufferedBbox;
+
+  const timeMs = Date.now() - start;
+  console.log(`[done] Total: ${timeMs}ms`);
+
+  return { cached: false, ...result, timeMs };
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +361,44 @@ function handleSave(req: IncomingMessage, res: ServerResponse): void {
   });
 }
 
+function handleLoadLocation(req: IncomingMessage, res: ServerResponse): void {
+  let body = "";
+  req.on("data", (chunk: Buffer) => {
+    body += chunk.toString();
+  });
+  req.on("end", () => {
+    if (loadingInProgress) {
+      sendJson(res, { error: "A location load is already in progress" }, 409);
+      return;
+    }
+
+    try {
+      const { bbox } = JSON.parse(body) as {
+        bbox: BoundingBox;
+      };
+
+      if (!bbox || bbox.minLat == null || bbox.maxLat == null || bbox.minLng == null || bbox.maxLng == null) {
+        sendJson(res, { error: "Missing or invalid bbox" }, 400);
+        return;
+      }
+
+      loadingInProgress = true;
+
+      fetchAndMerge(bbox)
+        .then((result) => {
+          loadingInProgress = false;
+          sendJson(res, result);
+        })
+        .catch((err) => {
+          loadingInProgress = false;
+          sendJson(res, { error: String(err) }, 500);
+        });
+    } catch (err) {
+      sendJson(res, { error: String(err) }, 400);
+    }
+  });
+}
+
 function handleNetworkStats(_req: IncomingMessage, res: ServerResponse): void {
   // Compute bounding box and type breakdown
   let minLat = Infinity, maxLat = -Infinity;
@@ -274,6 +470,8 @@ const server = createServer((req, res) => {
     handleSave(req, res);
   } else if (url === "/api/network-stats") {
     handleNetworkStats(req, res);
+  } else if (url === "/api/load-location" && method === "POST") {
+    handleLoadLocation(req, res);
   } else {
     res.writeHead(404);
     res.end("Not found");
