@@ -100,6 +100,11 @@
     </div>
 
     <div class="section">
+      <div class="section-header" data-section="scenic">Scenic Params</div>
+      <div class="section-body" id="scenic-section"></div>
+    </div>
+
+    <div class="section">
       <div class="section-header" data-section="confidence">Surface Confidence</div>
       <div class="section-body" id="confidence-section"></div>
     </div>
@@ -271,6 +276,14 @@ function buildControls() {
     sliders.surface[k] = makeSlider(sfc, `surface.${k}`, k, v, 0, 1, 0.01);
   }
 
+  // Scenic params
+  const snc = document.getElementById('scenic-section');
+  snc.innerHTML = '';
+  sliders.scenic = {};
+  sliders.scenic.scenicBoost = makeSlider(
+    snc, 'scenicBoost', 'Scenic boost', params.scenicBoost ?? 1.0, 0, 3, 0.01
+  );
+
   // Surface confidence min factor
   const cfc = document.getElementById('confidence-section');
   cfc.innerHTML = '';
@@ -333,6 +346,7 @@ function readParams() {
     surfaceScores,
     characterScores,
     surfaceConfidenceMinFactor: Number(sliders.confidence.surfaceConfidenceMinFactor.value),
+    scenicBoost: Number(sliders.scenic.scenicBoost.value),
   };
 }
 
@@ -428,6 +442,7 @@ function renderGeoJson(geojson) {
             ${barHtml(p.scoreSafety, 'Safety')}
             ${barHtml(p.scoreSurface, 'Surface')}
             ${barHtml(p.scoreCharacter, 'Character')}
+            ${barHtml(p.scoreScenic, 'Scenic')}
           </div>
         `;
         layer.bindPopup(html, { maxWidth: 350 }).openPopup();
