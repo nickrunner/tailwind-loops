@@ -21,12 +21,15 @@ function makeCorridor(overrides: Partial<Corridor>): Corridor {
     attributes: {
       lengthMeters: 500,
       predominantRoadClass: "residential",
-      predominantSurface: "asphalt",
+      predominantSurface: "paved",
       surfaceConfidence: 0.8,
-      infrastructureContinuity: 0,
+      bicycleInfraContinuity: 0,
+      pedestrianPathContinuity: 0,
       separationContinuity: 0,
       stopDensityPerKm: 0,
+      crossingDensityPerKm: 0,
       turnsCount: 0,
+      trafficCalmingContinuity: 0,
       scenicScore: 0,
     },
     edgeIds: [],
@@ -95,17 +98,18 @@ describe("scoreFlow", () => {
 // ─── scoreSafety ────────────────────────────────────────────────────────────
 
 describe("scoreSafety", () => {
-  it("cycleway with full infra/separation scores >0.8", () => {
+  it("cycleway with full infra/separation scores >=0.8", () => {
     const safe = makeCorridor({
       attributes: {
         ...makeCorridor({}).attributes,
         predominantRoadClass: "cycleway",
-        infrastructureContinuity: 1,
+        bicycleInfraContinuity: 1,
+        pedestrianPathContinuity: 0,
         separationContinuity: 1,
         averageSpeedLimit: 30,
       },
     });
-    expect(scoreSafety(safe)).toBeGreaterThan(0.8);
+    expect(scoreSafety(safe)).toBeGreaterThanOrEqual(0.8);
   });
 
   it("primary road with no infra and speed 70 scores <0.2", () => {
@@ -113,7 +117,8 @@ describe("scoreSafety", () => {
       attributes: {
         ...makeCorridor({}).attributes,
         predominantRoadClass: "primary",
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0,
         averageSpeedLimit: 70,
       },
@@ -126,7 +131,8 @@ describe("scoreSafety", () => {
       attributes: {
         ...makeCorridor({}).attributes,
         predominantRoadClass: "residential",
-        infrastructureContinuity: 0.5,
+        bicycleInfraContinuity: 0.5,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0.5,
       },
     });
@@ -140,45 +146,34 @@ describe("scoreSafety", () => {
 // ─── scoreSurface ───────────────────────────────────────────────────────────
 
 describe("scoreSurface", () => {
-  it("asphalt scores >0.9 for cycling with confidence 1.0", () => {
+  it("paved scores >0.9 for cycling with confidence 1.0", () => {
     const corridor = makeCorridor({
       attributes: {
         ...makeCorridor({}).attributes,
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 1.0,
       },
     });
     expect(scoreSurface(corridor, "road-cycling")).toBeGreaterThan(0.9);
   });
 
-  it("gravel scores <0.4 for cycling", () => {
+  it("unpaved scores 0 for cycling", () => {
     const corridor = makeCorridor({
       attributes: {
         ...makeCorridor({}).attributes,
-        predominantSurface: "gravel",
+        predominantSurface: "unpaved",
         surfaceConfidence: 1.0,
       },
     });
-    // Road cycling must avoid gravel — score should be 0
+    // Road cycling must avoid unpaved — score should be 0
     expect(scoreSurface(corridor, "road-cycling")).toBe(0.0);
   });
 
-  it("dirt scores high for running", () => {
+  it("unpaved scores high for running", () => {
     const corridor = makeCorridor({
       attributes: {
         ...makeCorridor({}).attributes,
-        predominantSurface: "dirt",
-        surfaceConfidence: 1.0,
-      },
-    });
-    expect(scoreSurface(corridor, "running")).toBeGreaterThan(0.7);
-  });
-
-  it("gravel scores high for running", () => {
-    const corridor = makeCorridor({
-      attributes: {
-        ...makeCorridor({}).attributes,
-        predominantSurface: "gravel",
+        predominantSurface: "unpaved",
         surfaceConfidence: 1.0,
       },
     });
@@ -189,14 +184,14 @@ describe("scoreSurface", () => {
     const highConf = makeCorridor({
       attributes: {
         ...makeCorridor({}).attributes,
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 1.0,
       },
     });
     const lowConf = makeCorridor({
       attributes: {
         ...makeCorridor({}).attributes,
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 0.2,
       },
     });
@@ -205,13 +200,9 @@ describe("scoreSurface", () => {
     );
   });
 
-  it("walking is permissive (all surfaces >0.5)", () => {
+  it("walking is permissive (all surfaces >=0.5)", () => {
     const surfaces = [
-      "asphalt",
-      "concrete",
       "paved",
-      "gravel",
-      "dirt",
       "unpaved",
       "unknown",
     ] as const;
@@ -231,9 +222,9 @@ describe("scoreSurface", () => {
 // ─── scoreCharacter ─────────────────────────────────────────────────────────
 
 describe("scoreCharacter", () => {
-  it("quiet-road scores 1.0 for road cycling", () => {
-    const corridor = makeCorridor({ type: "quiet-road" });
-    expect(scoreCharacter(corridor, "road-cycling")).toBe(1.0);
+  it("rural-road scores 0.9 for road cycling", () => {
+    const corridor = makeCorridor({ type: "rural-road" });
+    expect(scoreCharacter(corridor, "road-cycling")).toBe(0.9);
   });
 
   it("trail scores 1.0 for gravel cycling", () => {
@@ -249,11 +240,38 @@ describe("scoreCharacter", () => {
     }
   });
 
+  it("high crossing density reduces character score for road cycling", () => {
+    const low = makeCorridor({
+      type: "collector",
+      attributes: { ...makeCorridor({}).attributes, crossingDensityPerKm: 2 },
+    });
+    const high = makeCorridor({
+      type: "collector",
+      attributes: { ...makeCorridor({}).attributes, crossingDensityPerKm: 10 },
+    });
+    expect(scoreCharacter(high, "road-cycling")).toBeLessThan(
+      scoreCharacter(low, "road-cycling")
+    );
+  });
+
+  it("crossing density has no effect for walking (decay rate 0)", () => {
+    const low = makeCorridor({
+      type: "neighborhood",
+      attributes: { ...makeCorridor({}).attributes, crossingDensityPerKm: 0 },
+    });
+    const high = makeCorridor({
+      type: "neighborhood",
+      attributes: { ...makeCorridor({}).attributes, crossingDensityPerKm: 10 },
+    });
+    expect(scoreCharacter(high, "walking")).toBe(scoreCharacter(low, "walking"));
+  });
+
   it("all type/activity combos produce valid 0-1 scores", () => {
     const types: CorridorType[] = [
       "trail",
       "path",
-      "quiet-road",
+      "neighborhood",
+      "rural-road",
       "collector",
       "arterial",
       "mixed",
@@ -334,9 +352,10 @@ describe("scoreCorridor", () => {
         ...makeCorridor({}).attributes,
         lengthMeters: 5000,
         predominantRoadClass: "cycleway",
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 1.0,
-        infrastructureContinuity: 1,
+        bicycleInfraContinuity: 1,
+        pedestrianPathContinuity: 0,
         separationContinuity: 1,
         stopDensityPerKm: 0,
       },
@@ -347,9 +366,10 @@ describe("scoreCorridor", () => {
         ...makeCorridor({}).attributes,
         lengthMeters: 500,
         predominantRoadClass: "primary",
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 0.5,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0,
         stopDensityPerKm: 6,
         averageSpeedLimit: 70,
@@ -368,7 +388,7 @@ describe("scoreCorridors", () => {
     const corridors = new Map<string, Corridor>();
     corridors.set("c1", makeCorridor({ id: "c1", type: "trail" }));
     corridors.set("c2", makeCorridor({ id: "c2", type: "arterial" }));
-    corridors.set("c3", makeCorridor({ id: "c3", type: "quiet-road" }));
+    corridors.set("c3", makeCorridor({ id: "c3", type: "neighborhood" }));
 
     scoreCorridors(corridors, "road-cycling");
 

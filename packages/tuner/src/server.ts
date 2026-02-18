@@ -188,14 +188,14 @@ async function fetchAndMerge(
 
   console.log(`[fetch] Querying Overpass for ${fmtBbox(viewBbox)} (buffered: ${fmtBbox(bufferedBbox)})...`);
   const fetchStart = Date.now();
-  const response = await fetchOverpassData(bufferedBbox);
+  const { data, fetchedBbox } = await fetchOverpassData(bufferedBbox);
   const fetchMs = Date.now() - fetchStart;
-  console.log(`  Overpass responded in ${fetchMs}ms`);
+  console.log(`  Overpass responded in ${fetchMs}ms (tile: ${fmtBbox(fetchedBbox)})`);
 
   // Parse and merge into accumulated elements
   const prevNodes = accumulatedNodes.size;
   const prevWays = accumulatedWays.size;
-  for await (const el of parseOverpassResponse(response)) {
+  for await (const el of parseOverpassResponse(data)) {
     if (el.type === "node") accumulatedNodes.set(el.id, el);
     else accumulatedWays.set(el.id, el);
   }
@@ -206,8 +206,8 @@ async function fetchAndMerge(
   // Rebuild corridors from the full accumulated graph
   const result = await rebuildFromAccumulated();
 
-  // Expand covered bbox
-  coveredBbox = coveredBbox ? unionBbox(coveredBbox, bufferedBbox) : bufferedBbox;
+  // Expand covered bbox based on what was actually fetched (the tile bbox)
+  coveredBbox = coveredBbox ? unionBbox(coveredBbox, fetchedBbox) : fetchedBbox;
 
   const timeMs = Date.now() - start;
   console.log(`[done] Total: ${timeMs}ms`);

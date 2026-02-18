@@ -351,7 +351,7 @@ function findBestForwardContinuation(
   graph: Graph,
   currentEdge: GraphEdge,
   visited: Set<string>,
-  opts: Required<CorridorBuilderOptions>,
+  opts: CorridorBuilderOptions,
   threshold: number
 ): GraphEdge | null {
   const nodeId = currentEdge.toNodeId;
@@ -369,7 +369,7 @@ function findBestForwardContinuation(
     const exitB = exitBearing(currentEdge);
     const entryB = entryBearing(candidate);
     const angleDiff = angleDifference(exitB, entryB);
-    if (angleDiff > opts.maxAngleChange) continue;
+    if (angleDiff > (opts.maxAngleChange ?? 45)) continue;
 
     const score = edgeCompatibility(
       currentEdge.attributes,
@@ -394,7 +394,7 @@ function findBestBackwardContinuation(
   reverseAdj: Map<string, string[]>,
   currentEdge: GraphEdge,
   visited: Set<string>,
-  opts: Required<CorridorBuilderOptions>,
+  opts: CorridorBuilderOptions,
   threshold: number
 ): GraphEdge | null {
   const nodeId = currentEdge.fromNodeId;
@@ -412,7 +412,7 @@ function findBestBackwardContinuation(
     const exitB = exitBearing(candidate);
     const entryB = entryBearing(currentEdge);
     const angleDiff = angleDifference(exitB, entryB);
-    if (angleDiff > opts.maxAngleChange) continue;
+    if (angleDiff > (opts.maxAngleChange ?? 45)) continue;
 
     const score = edgeCompatibility(
       candidate.attributes,

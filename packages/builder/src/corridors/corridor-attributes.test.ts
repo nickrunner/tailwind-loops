@@ -21,15 +21,17 @@ function makeAttributes(
   return {
     roadClass: "residential",
     surfaceClassification: {
-      surface: "asphalt",
+      surface: "paved",
       confidence: 0.8,
       observations: [],
       hasConflict: false,
     },
     infrastructure: {
-      hasDedicatedPath: false,
+      hasBicycleInfra: false,
+      hasPedestrianPath: false,
       hasShoulder: false,
       isSeparated: false,
+      hasTrafficCalming: false,
     },
     oneWay: false,
     lengthMeters: 100,
@@ -118,17 +120,17 @@ describe("aggregateAttributes", () => {
       [
         makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
           lengthMeters: 50,
-          surfaceClassification: { surface: "gravel", confidence: 0.7, observations: [], hasConflict: false },
+          surfaceClassification: { surface: "unpaved", confidence: 0.7, observations: [], hasConflict: false },
         }),
         makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
           lengthMeters: 200,
-          surfaceClassification: { surface: "asphalt", confidence: 0.9, observations: [], hasConflict: false },
+          surfaceClassification: { surface: "paved", confidence: 0.9, observations: [], hasConflict: false },
         }),
       ]
     );
 
     const attrs = aggregateAttributes(["e1", "e2"], graph);
-    expect(attrs.predominantSurface).toBe("asphalt");
+    expect(attrs.predominantSurface).toBe("paved");
   });
 
   it("computes length-weighted surface confidence", () => {
@@ -137,11 +139,11 @@ describe("aggregateAttributes", () => {
       [
         makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
           lengthMeters: 100,
-          surfaceClassification: { surface: "asphalt", confidence: 0.6, observations: [], hasConflict: false },
+          surfaceClassification: { surface: "paved", confidence: 0.6, observations: [], hasConflict: false },
         }),
         makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
           lengthMeters: 100,
-          surfaceClassification: { surface: "asphalt", confidence: 1.0, observations: [], hasConflict: false },
+          surfaceClassification: { surface: "paved", confidence: 1.0, observations: [], hasConflict: false },
         }),
       ]
     );
@@ -156,17 +158,17 @@ describe("aggregateAttributes", () => {
       [
         makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
           lengthMeters: 300,
-          infrastructure: { hasDedicatedPath: true, hasShoulder: false, isSeparated: false },
+          infrastructure: { hasBicycleInfra: true, hasPedestrianPath: false, hasShoulder: false, isSeparated: false, hasTrafficCalming: false },
         }),
         makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
           lengthMeters: 100,
-          infrastructure: { hasDedicatedPath: false, hasShoulder: false, isSeparated: false },
+          infrastructure: { hasBicycleInfra: false, hasPedestrianPath: false, hasShoulder: false, isSeparated: false, hasTrafficCalming: false },
         }),
       ]
     );
 
     const attrs = aggregateAttributes(["e1", "e2"], graph);
-    expect(attrs.infrastructureContinuity).toBeCloseTo(0.75, 5);
+    expect(attrs.bicycleInfraContinuity).toBeCloseTo(0.75, 5);
   });
 
   it("computes separation continuity", () => {
@@ -175,11 +177,11 @@ describe("aggregateAttributes", () => {
       [
         makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
           lengthMeters: 200,
-          infrastructure: { hasDedicatedPath: false, hasShoulder: false, isSeparated: true },
+          infrastructure: { hasBicycleInfra: false, hasPedestrianPath: false, hasShoulder: false, isSeparated: true, hasTrafficCalming: false },
         }),
         makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
           lengthMeters: 200,
-          infrastructure: { hasDedicatedPath: false, hasShoulder: false, isSeparated: true },
+          infrastructure: { hasBicycleInfra: false, hasPedestrianPath: false, hasShoulder: false, isSeparated: true, hasTrafficCalming: false },
         }),
       ]
     );
@@ -285,6 +287,48 @@ describe("aggregateAttributes", () => {
     const attrs = aggregateAttributes(["e1", "e2"], graph);
     // 2 total controls over 1km = 2.0 per km
     expect(attrs.stopDensityPerKm).toBe(2.0);
+  });
+
+  it("computes crossingDensityPerKm from graph node degrees", () => {
+    // Simulates a bidirectional graph (like real OSM data) with a T-intersection at node b.
+    // Corridor goes a→b→c (1km total). Node b also has edges to/from d (cross-street).
+    // In real OSM model, a through-node has 2 outgoing (forward + reverse),
+    // a T-intersection has 3 outgoing.
+    const nodes = [
+      makeNode("a", 42.96, -85.66),
+      makeNode("b", 42.965, -85.66),
+      makeNode("c", 42.97, -85.66),
+      makeNode("d", 42.965, -85.659),
+    ];
+    const edges = [
+      // Main corridor (forward direction)
+      makeEdge("e1:f", "a", "b", [nodes[0]!.coordinate, nodes[1]!.coordinate], { lengthMeters: 500 }),
+      makeEdge("e2:f", "b", "c", [nodes[1]!.coordinate, nodes[2]!.coordinate], { lengthMeters: 500 }),
+      // Reverse edges for main corridor
+      makeEdge("e1:r", "b", "a", [nodes[1]!.coordinate, nodes[0]!.coordinate], { lengthMeters: 500 }),
+      makeEdge("e2:r", "c", "b", [nodes[2]!.coordinate, nodes[1]!.coordinate], { lengthMeters: 500 }),
+      // Cross-street at b
+      makeEdge("e3:f", "b", "d", [nodes[1]!.coordinate, nodes[3]!.coordinate], { lengthMeters: 100 }),
+      makeEdge("e3:r", "d", "b", [nodes[3]!.coordinate, nodes[1]!.coordinate], { lengthMeters: 100 }),
+    ];
+    const graph = makeGraph(nodes, edges);
+
+    const attrs = aggregateAttributes(["e1:f", "e2:f"], graph);
+    // Node a: outgoing = [e1:f] = 1 (not intersection)
+    // Node b: outgoing = [e2:f, e1:r, e3:f] = 3 (intersection!)
+    // Node c: outgoing = [e2:r] = 1 (not intersection)
+    // 1 intersection over 1km = 1.0 per km
+    expect(attrs.crossingDensityPerKm).toBe(1.0);
+  });
+
+  it("returns 0 crossingDensityPerKm when no intersections exist", () => {
+    const graph = makeGraph(
+      [makeNode("a", 0, 0), makeNode("b", 0, 0.001)],
+      [makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }])]
+    );
+
+    const attrs = aggregateAttributes(["e1"], graph);
+    expect(attrs.crossingDensityPerKm).toBe(0);
   });
 
   it("counts turns above 30 degrees between consecutive edges", () => {

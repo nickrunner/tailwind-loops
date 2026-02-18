@@ -9,7 +9,7 @@ import type {
   Infrastructure,
   RoadClass,
   SurfaceObservation,
-  SurfaceType,
+  SurfaceType
 } from "@tailwind-loops/types";
 import type { OsmTags, RelevantHighway } from "./types.js";
 import { isRelevantHighway } from "./types.js";
@@ -18,6 +18,8 @@ import { isRelevantHighway } from "./types.js";
  * Map OSM highway tag to our RoadClass.
  */
 const HIGHWAY_TO_ROAD_CLASS: Record<RelevantHighway, RoadClass> = {
+  trunk: "trunk",
+  trunk_link: "trunk",
   primary: "primary",
   primary_link: "primary",
   secondary: "secondary",
@@ -34,7 +36,7 @@ const HIGHWAY_TO_ROAD_CLASS: Record<RelevantHighway, RoadClass> = {
   pedestrian: "footway",
   bridleway: "path",
   steps: "footway",
-  track: "track",
+  track: "track"
 };
 
 /**
@@ -60,27 +62,27 @@ export function extractRoadClass(tags: OsmTags | undefined): RoadClass {
  */
 const SURFACE_TAG_MAP: Record<string, SurfaceType> = {
   // Paved surfaces
-  asphalt: "asphalt",
+  asphalt: "paved",
   paved: "paved",
-  concrete: "concrete",
-  "concrete:plates": "concrete",
-  "concrete:lanes": "concrete",
+  concrete: "paved",
+  "concrete:plates": "paved",
+  "concrete:lanes": "paved",
   paving_stones: "paved",
   sett: "paved",
-  cobblestone: "paved",
   metal: "paved",
 
   // Gravel/compacted surfaces
-  gravel: "gravel",
-  fine_gravel: "gravel",
-  compacted: "gravel",
-  pebblestone: "gravel",
+  gravel: "unpaved",
+  fine_gravel: "unpaved",
+  compacted: "unpaved",
+  pebblestone: "unpaved",
+  cobblestone: "unpaved",
 
   // Dirt/earth surfaces
-  dirt: "dirt",
-  earth: "dirt",
-  ground: "dirt",
-  mud: "dirt",
+  dirt: "unpaved",
+  earth: "unpaved",
+  ground: "unpaved",
+  mud: "unpaved",
 
   // Other unpaved surfaces
   unpaved: "unpaved",
@@ -88,7 +90,7 @@ const SURFACE_TAG_MAP: Record<string, SurfaceType> = {
   grass: "unpaved",
   grass_paver: "unpaved",
   wood: "unpaved",
-  woodchips: "unpaved",
+  woodchips: "unpaved"
 };
 
 /**
@@ -96,6 +98,7 @@ const SURFACE_TAG_MAP: Record<string, SurfaceType> = {
  * These have lower confidence as they're generalizations.
  */
 const HIGHWAY_INFERRED_SURFACE: Partial<Record<RoadClass, SurfaceType>> = {
+  trunk: "paved",
   primary: "paved",
   secondary: "paved",
   tertiary: "paved",
@@ -105,7 +108,7 @@ const HIGHWAY_INFERRED_SURFACE: Partial<Record<RoadClass, SurfaceType>> = {
   footway: "paved",
   track: "unpaved",
   path: "unknown",
-  unclassified: "unknown",
+  unclassified: "unknown"
 };
 
 /** Confidence for explicit OSM surface tag */
@@ -137,7 +140,7 @@ export function extractSurface(
       return {
         source: "osm-surface-tag",
         surface: surfaceType,
-        sourceConfidence: EXPLICIT_SURFACE_CONFIDENCE,
+        sourceConfidence: EXPLICIT_SURFACE_CONFIDENCE
       };
     }
   }
@@ -149,17 +152,39 @@ export function extractSurface(
   return {
     source: "osm-highway-inferred",
     surface: inferredSurface ?? "unknown",
-    sourceConfidence: INFERRED_SURFACE_CONFIDENCE,
+    sourceConfidence: INFERRED_SURFACE_CONFIDENCE
   };
+}
+
+/** Values on cycleway/cycleway:* tags that indicate a dedicated bike lane or path */
+const CYCLEWAY_DEDICATED = new Set(["lane", "track", "shared_lane", "shared_busway"]);
+
+/** Values on cycleway/cycleway:* tags that indicate physical separation from traffic */
+const CYCLEWAY_SEPARATED = new Set(["track", "separate"]);
+
+/**
+ * Read the effective cycleway value, considering cycleway, cycleway:left,
+ * cycleway:right, and cycleway:both tags.  Returns an array of all non-empty
+ * values found (typically 1-2 entries).
+ */
+function collectCyclewayValues(tags: OsmTags): string[] {
+  const vals: string[] = [];
+  for (const key of ["cycleway", "cycleway:left", "cycleway:right", "cycleway:both"] as const) {
+    const v = tags[key];
+    if (v && v !== "no" && v !== "none") vals.push(v);
+  }
+  return vals;
 }
 
 /**
  * Extract infrastructure information from OSM tags.
  *
  * Determines:
- * - hasDedicatedPath: bike lane, cycle track, or dedicated path
+ * - hasBicycleInfra: bike lane, cycle track, cycleway, bicycle-designated route
+ * - hasPedestrianPath: footway, pedestrian area, generic path
  * - hasShoulder: paved shoulder available
  * - isSeparated: physically separated from motor traffic
+ * - hasTrafficCalming: traffic calming measures present
  *
  * @param tags - OSM tags object
  * @returns Infrastructure flags
@@ -167,36 +192,44 @@ export function extractSurface(
 export function extractInfrastructure(tags: OsmTags | undefined): Infrastructure {
   if (!tags) {
     return {
-      hasDedicatedPath: false,
+      hasBicycleInfra: false,
+      hasPedestrianPath: false,
       hasShoulder: false,
       isSeparated: false,
+      hasTrafficCalming: false,
     };
   }
 
   const highway = tags["highway"];
-  const cycleway = tags["cycleway"];
   const bicycle = tags["bicycle"];
   const sidewalk = tags["sidewalk"];
   const shoulder = tags["shoulder"];
   const segregated = tags["segregated"];
+  const bicycleRoad = tags["bicycle_road"];
+  const cyclestreet = tags["cyclestreet"];
+  const trafficCalming = tags["traffic_calming"];
 
-  // Dedicated path: dedicated cycling/walking infrastructure
-  const hasDedicatedPath =
+  // Collect all cycleway tag values (cycleway, cycleway:left/right/both)
+  const cwValues = collectCyclewayValues(tags);
+
+  // Bicycle infrastructure: bike lanes, cycle tracks, dedicated cycleways
+  const hasBicycleInfra =
     highway === "cycleway" ||
-    highway === "path" ||
+    cwValues.some((v) => CYCLEWAY_DEDICATED.has(v)) ||
+    bicycle === "designated" ||
+    bicycleRoad === "yes" ||
+    cyclestreet === "yes";
+
+  // Pedestrian path: footways, sidewalks, generic paths
+  // highway=path with bicycle=designated is bike infra, not ped path
+  const hasPedestrianPath =
     highway === "footway" ||
     highway === "pedestrian" ||
-    cycleway === "lane" ||
-    cycleway === "track" ||
-    cycleway === "shared_lane" ||
-    bicycle === "designated";
+    (highway === "path" && bicycle !== "designated");
 
   // Shoulder: usable shoulder exists
   const hasShoulder =
-    shoulder === "yes" ||
-    shoulder === "both" ||
-    shoulder === "left" ||
-    shoulder === "right";
+    shoulder === "yes" || shoulder === "both" || shoulder === "left" || shoulder === "right";
 
   // Separated: physically separated from motor traffic
   const isSeparated =
@@ -204,15 +237,20 @@ export function extractInfrastructure(tags: OsmTags | undefined): Infrastructure
     highway === "path" ||
     highway === "footway" ||
     highway === "pedestrian" ||
-    cycleway === "track" ||
-    cycleway === "separate" ||
+    cwValues.some((v) => CYCLEWAY_SEPARATED.has(v)) ||
     segregated === "yes" ||
     sidewalk === "separate";
 
+  // Traffic calming: speed bumps, chicanes, raised crossings, etc.
+  const hasTrafficCalming =
+    (trafficCalming != null && trafficCalming !== "no") || highway === "living_street";
+
   return {
-    hasDedicatedPath,
+    hasBicycleInfra,
+    hasPedestrianPath,
     hasShoulder,
     isSeparated,
+    hasTrafficCalming,
   };
 }
 

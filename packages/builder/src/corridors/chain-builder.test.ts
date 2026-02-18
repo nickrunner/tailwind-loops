@@ -22,15 +22,17 @@ function makeAttributes(
   return {
     roadClass: "residential",
     surfaceClassification: {
-      surface: "asphalt",
+      surface: "paved",
       confidence: 0.8,
       observations: [],
       hasConflict: false,
     },
     infrastructure: {
-      hasDedicatedPath: false,
+      hasBicycleInfra: false,
+      hasPedestrianPath: false,
       hasShoulder: false,
       isSeparated: false,
+      hasTrafficCalming: false,
     },
     oneWay: false,
     lengthMeters: 100,

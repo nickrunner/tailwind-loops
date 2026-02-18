@@ -14,12 +14,12 @@ describe("fuseSurfaceObservations", () => {
   it("returns the surface from a single observation", () => {
     const obs: SurfaceObservation = {
       source: "osm-surface-tag",
-      surface: "gravel",
+      surface: "unpaved",
       sourceConfidence: 0.8,
     };
     const result = fuseSurfaceObservations([obs]);
 
-    expect(result.surface).toBe("gravel");
+    expect(result.surface).toBe("unpaved");
     expect(result.confidence).toBeGreaterThan(0);
     expect(result.observations).toEqual([obs]);
     expect(result.hasConflict).toBe(false);
@@ -33,20 +33,20 @@ describe("fuseSurfaceObservations", () => {
     };
     const gravelmapObs: SurfaceObservation = {
       source: "gravelmap",
-      surface: "gravel",
+      surface: "unpaved",
       sourceConfidence: 0.8,
     };
 
     const result = fuseSurfaceObservations([osmObs, gravelmapObs]);
 
     // Gravelmap should win due to higher source weight (0.9 vs 0.2)
-    expect(result.surface).toBe("gravel");
+    expect(result.surface).toBe("unpaved");
   });
 
   it("weights OSM surface tag higher than highway inference", () => {
     const osmTagObs: SurfaceObservation = {
       source: "osm-surface-tag",
-      surface: "gravel",
+      surface: "unpaved",
       sourceConfidence: 0.8,
     };
     const osmInferredObs: SurfaceObservation = {
@@ -58,7 +58,7 @@ describe("fuseSurfaceObservations", () => {
     const result = fuseSurfaceObservations([osmTagObs, osmInferredObs]);
 
     // OSM surface tag should win (0.7 * 0.8 = 0.56 vs 0.2 * 1.0 = 0.2)
-    expect(result.surface).toBe("gravel");
+    expect(result.surface).toBe("unpaved");
   });
 
   it("flags conflicts when sources disagree significantly", () => {
@@ -69,7 +69,7 @@ describe("fuseSurfaceObservations", () => {
     };
     const obs2: SurfaceObservation = {
       source: "gravelmap",
-      surface: "gravel",
+      surface: "unpaved",
       sourceConfidence: 0.9,
     };
 
@@ -81,7 +81,7 @@ describe("fuseSurfaceObservations", () => {
   it("does not flag conflict when one source dominates", () => {
     const strongObs: SurfaceObservation = {
       source: "gravelmap",
-      surface: "gravel",
+      surface: "unpaved",
       sourceConfidence: 1.0,
     };
     const weakObs: SurfaceObservation = {
@@ -101,16 +101,16 @@ describe("fuseSurfaceObservations", () => {
   it("increases confidence with multiple agreeing sources", () => {
     const singleObs: SurfaceObservation = {
       source: "osm-surface-tag",
-      surface: "gravel",
+      surface: "unpaved",
       sourceConfidence: 0.8,
     };
 
     const resultSingle = fuseSurfaceObservations([singleObs]);
 
     const multipleObs: SurfaceObservation[] = [
-      { source: "osm-surface-tag", surface: "gravel", sourceConfidence: 0.8 },
-      { source: "gravelmap", surface: "gravel", sourceConfidence: 0.8 },
-      { source: "user-report", surface: "gravel", sourceConfidence: 0.9 },
+      { source: "osm-surface-tag", surface: "unpaved", sourceConfidence: 0.8 },
+      { source: "gravelmap", surface: "unpaved", sourceConfidence: 0.8 },
+      { source: "user-report", surface: "unpaved", sourceConfidence: 0.9 },
     ];
 
     const resultMultiple = fuseSurfaceObservations(multipleObs);
@@ -122,8 +122,8 @@ describe("fuseSurfaceObservations", () => {
 
   it("preserves all observations in the result", () => {
     const observations: SurfaceObservation[] = [
-      { source: "osm-surface-tag", surface: "gravel", sourceConfidence: 0.8 },
-      { source: "gravelmap", surface: "gravel", sourceConfidence: 0.7 },
+      { source: "osm-surface-tag", surface: "unpaved", sourceConfidence: 0.8 },
+      { source: "gravelmap", surface: "unpaved", sourceConfidence: 0.7 },
     ];
 
     const result = fuseSurfaceObservations(observations);
@@ -135,10 +135,10 @@ describe("fuseSurfaceObservations", () => {
   it("caps confidence at 0.95", () => {
     // Create many agreeing high-confidence sources
     const observations: SurfaceObservation[] = [
-      { source: "gravelmap", surface: "gravel", sourceConfidence: 1.0 },
-      { source: "user-report", surface: "gravel", sourceConfidence: 1.0 },
-      { source: "osm-surface-tag", surface: "gravel", sourceConfidence: 1.0 },
-      { source: "strava-heatmap", surface: "gravel", sourceConfidence: 1.0 },
+      { source: "gravelmap", surface: "unpaved", sourceConfidence: 1.0 },
+      { source: "user-report", surface: "unpaved", sourceConfidence: 1.0 },
+      { source: "osm-surface-tag", surface: "unpaved", sourceConfidence: 1.0 },
+      { source: "strava-heatmap", surface: "unpaved", sourceConfidence: 1.0 },
     ];
 
     const result = fuseSurfaceObservations(observations);
@@ -149,7 +149,7 @@ describe("fuseSurfaceObservations", () => {
   it("handles user-report as high-priority source", () => {
     const userReport: SurfaceObservation = {
       source: "user-report",
-      surface: "dirt",
+      surface: "unpaved",
       sourceConfidence: 0.9,
     };
     const osmInferred: SurfaceObservation = {
@@ -162,6 +162,6 @@ describe("fuseSurfaceObservations", () => {
 
     // User report: 0.85 * 0.9 = 0.765
     // OSM inferred: 0.2 * 1.0 = 0.2
-    expect(result.surface).toBe("dirt");
+    expect(result.surface).toBe("unpaved");
   });
 });

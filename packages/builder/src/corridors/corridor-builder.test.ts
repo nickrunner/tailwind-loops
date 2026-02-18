@@ -18,15 +18,17 @@ function makeAttributes(
   return {
     roadClass: "residential",
     surfaceClassification: {
-      surface: "asphalt",
+      surface: "paved",
       confidence: 0.8,
       observations: [],
       hasConflict: false,
     },
     infrastructure: {
-      hasDedicatedPath: false,
+      hasBicycleInfra: false,
+      hasPedestrianPath: false,
       hasShoulder: false,
       isSeparated: false,
+      hasTrafficCalming: false,
     },
     oneWay: false,
     lengthMeters: 100,
@@ -189,12 +191,15 @@ function makeCorridor(overrides: Partial<Corridor>): Corridor {
     attributes: {
       lengthMeters: 500,
       predominantRoadClass: "residential",
-      predominantSurface: "asphalt",
+      predominantSurface: "paved",
       surfaceConfidence: 0.8,
-      infrastructureContinuity: 0,
+      bicycleInfraContinuity: 0,
+      pedestrianPathContinuity: 0,
       separationContinuity: 0,
       stopDensityPerKm: 0,
+      crossingDensityPerKm: 0,
       turnsCount: 0,
+      trafficCalmingContinuity: 0,
       scenicScore: 0,
     },
     edgeIds: [],
@@ -214,12 +219,15 @@ describe("classifyCorridor", () => {
       attributes: {
         lengthMeters: 1000,
         predominantRoadClass: "cycleway",
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 0.9,
-        infrastructureContinuity: 1,
+        bicycleInfraContinuity: 1,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0.9,
         stopDensityPerKm: 0,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0,
         scenicScore: 0,
       },
     });
@@ -231,12 +239,15 @@ describe("classifyCorridor", () => {
       attributes: {
         lengthMeters: 500,
         predominantRoadClass: "path",
-        predominantSurface: "gravel",
+        predominantSurface: "unpaved",
         surfaceConfidence: 0.7,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0.8,
         stopDensityPerKm: 0,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0,
         scenicScore: 0,
       },
     });
@@ -248,12 +259,15 @@ describe("classifyCorridor", () => {
       attributes: {
         lengthMeters: 200,
         predominantRoadClass: "path",
-        predominantSurface: "dirt",
+        predominantSurface: "unpaved",
         surfaceConfidence: 0.5,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0.3,
         stopDensityPerKm: 0,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0,
         scenicScore: 0,
       },
     });
@@ -267,49 +281,98 @@ describe("classifyCorridor", () => {
         predominantRoadClass: "footway",
         predominantSurface: "paved",
         surfaceConfidence: 0.9,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0,
         stopDensityPerKm: 0,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0,
         scenicScore: 0,
       },
     });
     expect(classifyCorridor(corridor)).toBe("path");
   });
 
-  it("classifies residential with no speed limit as quiet-road", () => {
+  it("classifies residential with no speed limit and no urban signals as rural-road", () => {
     const corridor = makeCorridor({
       attributes: {
         lengthMeters: 500,
         predominantRoadClass: "residential",
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 0.8,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0,
         stopDensityPerKm: 0,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0,
         scenicScore: 0,
       },
     });
-    expect(classifyCorridor(corridor)).toBe("quiet-road");
+    expect(classifyCorridor(corridor)).toBe("rural-road");
   });
 
-  it("classifies residential with speed <= 40 as quiet-road", () => {
+  it("classifies residential with sidewalks as neighborhood", () => {
     const corridor = makeCorridor({
       attributes: {
         lengthMeters: 500,
         predominantRoadClass: "residential",
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 0.8,
         averageSpeedLimit: 30,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0.5,
         separationContinuity: 0,
-        stopDensityPerKm: 0,
+        stopDensityPerKm: 3,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0.4,
         scenicScore: 0,
       },
     });
-    expect(classifyCorridor(corridor)).toBe("quiet-road");
+    expect(classifyCorridor(corridor)).toBe("neighborhood");
+  });
+
+  it("classifies residential with high crossing density as neighborhood (even without tagged stops)", () => {
+    const corridor = makeCorridor({
+      attributes: {
+        lengthMeters: 500,
+        predominantRoadClass: "residential",
+        predominantSurface: "paved",
+        surfaceConfidence: 0.8,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
+        separationContinuity: 0,
+        stopDensityPerKm: 0,
+        crossingDensityPerKm: 6,
+        turnsCount: 0,
+        trafficCalmingContinuity: 0,
+        scenicScore: 0,
+      },
+    });
+    expect(classifyCorridor(corridor)).toBe("neighborhood");
+  });
+
+  it("classifies residential with high stop density as neighborhood", () => {
+    const corridor = makeCorridor({
+      attributes: {
+        lengthMeters: 500,
+        predominantRoadClass: "residential",
+        predominantSurface: "paved",
+        surfaceConfidence: 0.8,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
+        separationContinuity: 0,
+        stopDensityPerKm: 4,
+        crossingDensityPerKm: 0,
+        turnsCount: 0,
+        trafficCalmingContinuity: 0,
+        scenicScore: 0,
+      },
+    });
+    expect(classifyCorridor(corridor)).toBe("neighborhood");
   });
 
   it("classifies residential with speed > 40 as mixed", () => {
@@ -317,13 +380,16 @@ describe("classifyCorridor", () => {
       attributes: {
         lengthMeters: 500,
         predominantRoadClass: "residential",
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 0.8,
         averageSpeedLimit: 60,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0,
         stopDensityPerKm: 0,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0,
         scenicScore: 0,
       },
     });
@@ -335,12 +401,15 @@ describe("classifyCorridor", () => {
       attributes: {
         lengthMeters: 500,
         predominantRoadClass: "secondary",
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 0.9,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0,
         stopDensityPerKm: 0,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0,
         scenicScore: 0,
       },
     });
@@ -352,12 +421,15 @@ describe("classifyCorridor", () => {
       attributes: {
         lengthMeters: 500,
         predominantRoadClass: "tertiary",
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 0.9,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0,
         stopDensityPerKm: 0,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0,
         scenicScore: 0,
       },
     });
@@ -369,12 +441,15 @@ describe("classifyCorridor", () => {
       attributes: {
         lengthMeters: 500,
         predominantRoadClass: "primary",
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 0.9,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0,
         stopDensityPerKm: 0,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0,
         scenicScore: 0,
       },
     });
@@ -386,12 +461,15 @@ describe("classifyCorridor", () => {
       attributes: {
         lengthMeters: 500,
         predominantRoadClass: "trunk",
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 0.9,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0,
         stopDensityPerKm: 0,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0,
         scenicScore: 0,
       },
     });
@@ -403,12 +481,15 @@ describe("classifyCorridor", () => {
       attributes: {
         lengthMeters: 500,
         predominantRoadClass: "motorway",
-        predominantSurface: "asphalt",
+        predominantSurface: "paved",
         surfaceConfidence: 0.9,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0,
         stopDensityPerKm: 0,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0,
         scenicScore: 0,
       },
     });
@@ -420,12 +501,15 @@ describe("classifyCorridor", () => {
       attributes: {
         lengthMeters: 500,
         predominantRoadClass: "track",
-        predominantSurface: "dirt",
+        predominantSurface: "unpaved",
         surfaceConfidence: 0.5,
-        infrastructureContinuity: 0,
+        bicycleInfraContinuity: 0,
+        pedestrianPathContinuity: 0,
         separationContinuity: 0,
         stopDensityPerKm: 0,
+        crossingDensityPerKm: 0,
         turnsCount: 0,
+        trafficCalmingContinuity: 0,
         scenicScore: 0,
       },
     });
@@ -452,7 +536,7 @@ describe("buildCorridors", () => {
       makeEdge("e3", "c", "d", [{ lat: 0, lng: 0.002 }, { lat: 0, lng: 0.003 }], { lengthMeters: 100 }),
       makeEdge("e4", "b", "e", [{ lat: 0, lng: 0.001 }, { lat: 0.0005, lng: 0.001 }], {
         lengthMeters: 50, roadClass: "cycleway",
-        infrastructure: { hasDedicatedPath: true, hasShoulder: false, isSeparated: true },
+        infrastructure: { hasBicycleInfra: true, hasPedestrianPath: false, hasShoulder: false, isSeparated: true, hasTrafficCalming: false },
       }),
     ];
     addTriangleStub("a", 0, 0, "sa", nodes, edges);
@@ -481,20 +565,23 @@ describe("buildCorridors", () => {
 
   it("assigns corridor type based on attributes", async () => {
     // Build a long cycleway (separated) → should be classified as "trail"
-    const { graph } = makeStraightRoad(3, 100, {
+    // 500m exceeds the 400m dedicatedInfra tier threshold
+    const { graph } = makeStraightRoad(5, 100, {
       roadClass: "cycleway",
-      infrastructure: { hasDedicatedPath: true, hasShoulder: false, isSeparated: true },
+      infrastructure: { hasBicycleInfra: true, hasPedestrianPath: false, hasShoulder: false, isSeparated: true, hasTrafficCalming: false },
     });
 
-    const result = await buildCorridors(graph, { minLengthMeters: 200 });
+    const result = await buildCorridors(graph);
     const corridors = [...result.network.corridors.values()];
     expect(corridors).toHaveLength(1);
     expect(corridors[0]!.type).toBe("trail");
   });
 
   it("derives corridor name from edges", async () => {
-    const { graph } = makeStraightRoad(3, 100, { name: "Rail Trail" });
-    const result = await buildCorridors(graph, { minLengthMeters: 200 });
+    // 10 edges of 100m = 1000m, named "Rail Trail", residential
+    // namedRoad tier (1609m) halved by name bonus (100% coverage) = ~805m → 1000m qualifies
+    const { graph } = makeStraightRoad(10, 100, { name: "Rail Trail" });
+    const result = await buildCorridors(graph);
     const corridors = [...result.network.corridors.values()];
     expect(corridors[0]!.name).toBe("Rail Trail");
   });
@@ -517,7 +604,7 @@ describe("buildCorridors", () => {
       makeEdge("r2e3", "g", "h", [{ lat: 0.001, lng: 0.002 }, { lat: 0.001, lng: 0.003 }], { lengthMeters: 100 }),
       makeEdge("conn", "c", "g", [{ lat: 0, lng: 0.002 }, { lat: 0.001, lng: 0.002 }], {
         lengthMeters: 50, roadClass: "cycleway",
-        infrastructure: { hasDedicatedPath: true, hasShoulder: false, isSeparated: true },
+        infrastructure: { hasBicycleInfra: true, hasPedestrianPath: false, hasShoulder: false, isSeparated: true, hasTrafficCalming: false },
       }),
     ];
     addTriangleStub("a", 0, 0, "sa", nodes, edges);
@@ -690,5 +777,119 @@ describe("buildCorridors", () => {
     expect(result.stats).toHaveProperty("connectorCount");
     expect(typeof result.stats.connectorCount).toBe("number");
     expect(result.stats.connectorCount).toBeGreaterThanOrEqual(0);
+  });
+
+  describe("smart corridor detection", () => {
+    it("promotes short separated cycleway to corridor (dedicatedInfra tier)", async () => {
+      // 500m cycleway — below old 1609m default but above 400m dedicatedInfra tier
+      const { graph, edgeIds } = makeStraightRoad(5, 100, {
+        roadClass: "cycleway",
+        infrastructure: {
+          hasBicycleInfra: true,
+          hasPedestrianPath: false,
+          hasShoulder: false,
+          isSeparated: true,
+          hasTrafficCalming: false,
+        },
+      });
+
+      // With default options (no explicit minLengthMeters), smart detection should kick in
+      const result = await buildCorridors(graph);
+      const corridors = [...result.network.corridors.values()];
+      const cyclewayCorr = corridors.find((c) =>
+        edgeIds.some((id) => c.edgeIds.includes(id))
+      );
+      expect(cyclewayCorr).toBeDefined();
+      expect(cyclewayCorr!.type).toBe("trail");
+    });
+
+    it("promotes named road with bike infra to corridor (namedBikeInfra tier)", async () => {
+      // 500m named bike boulevard — below 1609m but above 400m namedBikeInfra tier
+      // (with name bonus: 400 * 0.5 = 200m effective threshold)
+      const { graph, edgeIds } = makeStraightRoad(5, 100, {
+        roadClass: "residential",
+        name: "Bike Boulevard",
+        infrastructure: {
+          hasBicycleInfra: true,
+          hasPedestrianPath: false,
+          hasShoulder: false,
+          isSeparated: false,
+          hasTrafficCalming: false,
+        },
+      });
+
+      const result = await buildCorridors(graph);
+      const corridors = [...result.network.corridors.values()];
+      const bikeCorr = corridors.find((c) =>
+        edgeIds.some((id) => c.edgeIds.includes(id))
+      );
+      expect(bikeCorr).toBeDefined();
+    });
+
+    it("keeps long inconsistent chain as connector when homogeneity is low", async () => {
+      // Build a chain where alternating edges have very different attributes
+      // but are in the same road class group (residential/service).
+      // All unnamed so it falls into the "unnamed" tier (1609m).
+      // Max infra differences drive homogeneity well below 0.7,
+      // inflating the threshold beyond the total chain length.
+      const nodes: GraphNode[] = [];
+      const edges: GraphEdge[] = [];
+      const edgeIds: string[] = [];
+      const count = 10;
+
+      for (let i = 0; i <= count; i++) {
+        nodes.push(makeNode(`n${i}`, 0, i * 0.001));
+      }
+
+      for (let i = 0; i < count; i++) {
+        const id = `e${i}`;
+        edgeIds.push(id);
+        const isEven = i % 2 === 0;
+        edges.push(
+          makeEdge(
+            id,
+            `n${i}`,
+            `n${i + 1}`,
+            [
+              { lat: 0, lng: i * 0.001 },
+              { lat: 0, lng: (i + 1) * 0.001 },
+            ],
+            {
+              lengthMeters: 200,
+              roadClass: isEven ? "residential" : "service",
+              surfaceClassification: {
+                surface: isEven ? "paved" : "unpaved",
+                confidence: 0.8,
+                observations: [],
+                hasConflict: false,
+              },
+              infrastructure: {
+                hasBicycleInfra: isEven,
+                hasPedestrianPath: isEven,
+                hasShoulder: isEven,
+                isSeparated: isEven,
+                hasTrafficCalming: isEven,
+              },
+            }
+          )
+        );
+      }
+
+      // Add triangle stubs so endpoints survive pruning
+      const eLng = count * 0.001;
+      addTriangleStub("n0", 0, 0, "sa", nodes, edges);
+      addTriangleStub(`n${count}`, 0, eLng, "sb", nodes, edges);
+
+      const graph = makeGraph(nodes, edges);
+      const result = await buildCorridors(graph);
+
+      // The alternating-attribute chain should NOT be a corridor
+      // because the homogeneity penalty inflates the threshold
+      const corridors = [...result.network.corridors.values()];
+      const junkCorr = corridors.find((c) =>
+        edgeIds.some((id) => c.edgeIds.includes(id))
+      );
+      expect(junkCorr).toBeUndefined();
+    });
   });
 });

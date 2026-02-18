@@ -12,7 +12,7 @@ function makeSurface(surface: SurfaceClassification["surface"] = "paved", confid
 }
 
 function makeInfra(): Infrastructure {
-  return { hasDedicatedPath: false, hasShoulder: false, isSeparated: false };
+  return { hasBicycleInfra: false, hasPedestrianPath: false, hasShoulder: false, isSeparated: false, hasTrafficCalming: false };
 }
 
 function makeEdge(id: string, from: string, to: string, overrides: Partial<EdgeAttributes> = {}): GraphEdge {
@@ -88,12 +88,12 @@ describe("graphToGeoJson", () => {
 
   it("filters by surface type", () => {
     const graph = makeGraph([
-      makeEdge("e1", "n1", "n2", { surfaceClassification: makeSurface("gravel") }),
+      makeEdge("e1", "n1", "n2", { surfaceClassification: makeSurface("unpaved") }),
       makeEdge("e2", "n3", "n4", { surfaceClassification: makeSurface("paved") }),
     ]);
-    const result = graphToGeoJson(graph, { surfaceTypes: ["gravel"] });
+    const result = graphToGeoJson(graph, { surfaceTypes: ["unpaved"] });
     expect(result.features).toHaveLength(1);
-    expect(result.features[0]!.properties['surface']).toBe("gravel");
+    expect(result.features[0]!.properties['surface']).toBe("unpaved");
   });
 
   it("deduplicates bidirectional edges", () => {

@@ -1,30 +1,40 @@
 {
   "activityType": "road-cycling",
-  "weights": { "flow": 0.25, "safety": 0.20, "surface": 0.25, "character": 0.20, "scenic": 0.10 },
+  "weights": {
+    "flow": 0.30000000000000004,
+    "safety": 0.15000000000000002,
+    "surface": 0.25000000000000006,
+    "character": 0.20000000000000004,
+    "scenic": 0.10000000000000002
+  },
   "flow": {
     "lengthLogDenominator": 300,
-    "lengthLogNumerator": 10000,
+    "lengthLogNumerator": 20000,
     "stopDecayRate": 0.2,
     "lengthBlend": 0.6
   },
-  "safety": { "infrastructure": 0.3, "separation": 0.3, "speedLimit": 0.2, "roadClass": 0.2 },
+  "safety": {
+    "roadClass": 0.30000000000000004,
+    "speedLimit": 0.20000000000000004,
+    "bicycleInfra": 0.20000000000000004,
+    "pedestrianPath": 0,
+    "separation": 0.20000000000000004,
+    "trafficCalming": 0.10000000000000002
+  },
   "surfaceScores": {
-    "asphalt": 1,
-    "concrete": 0.9,
-    "paved": 0.9,
-    "gravel": 0,
-    "dirt": 0,
+    "paved": 1,
     "unpaved": 0,
     "unknown": 0.3
   },
   "characterScores": {
-    "quiet-road": 1,
-    "collector": 0.7,
+    "collector": 0.51,
+    "rural-road": 0.9,
     "mixed": 0.5,
+    "neighborhood": 0.4,
     "arterial": 0.3,
     "trail": 0.3,
     "path": 0.1
   },
   "surfaceConfidenceMinFactor": 0.5,
-  "scenicBoost": 1.0
+  "scenicBoost": 1
 }

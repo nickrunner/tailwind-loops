@@ -76,6 +76,8 @@ export interface IngestionOptions {
   osm: OsmIngestionOptions;
   /** Surface data providers to use for enrichment */
   surfaceProviders?: SurfaceDataProvider[];
+  /** Generalized enrichment providers (supersedes surfaceProviders) */
+  enrichmentProviders?: import("../enrichment/provider.js").EnrichmentProvider[];
 }
 
 /** Statistics about surface data quality */
@@ -153,10 +155,6 @@ function computeSurfaceStats(graph: Graph): SurfaceStats {
   let conflictCount = 0;
   const bySurfaceType: Record<SurfaceType, number> = {
     paved: 0,
-    asphalt: 0,
-    concrete: 0,
-    gravel: 0,
-    dirt: 0,
     unpaved: 0,
     unknown: 0,
   };
@@ -294,7 +292,7 @@ export function fuseSurfaceObservations(
 }
 
 /**
- * Full ingestion pipeline: OSM + surface enrichment.
+ * Full ingestion pipeline: OSM + enrichment.
  *
  * @param options - Full ingestion options
  * @returns The enriched graph and statistics
@@ -303,7 +301,7 @@ export async function ingest(options: IngestionOptions): Promise<IngestionResult
   // 1. Ingest base graph from OSM
   const result = await ingestOsm(options.osm);
 
-  // 2. Enrich with additional surface providers
+  // 2. Enrich with additional surface providers (legacy path)
   if (options.surfaceProviders && options.surfaceProviders.length > 0) {
     const bounds = options.osm.bounds ?? inferBounds(result.graph);
     result.stats.surface = await enrichSurfaces(
@@ -311,6 +309,29 @@ export async function ingest(options: IngestionOptions): Promise<IngestionResult
       options.surfaceProviders,
       bounds
     );
+  }
+
+  // 3. Enrich with generalized enrichment providers
+  if (options.enrichmentProviders && options.enrichmentProviders.length > 0) {
+    const { enrichGraph } = await import("../enrichment/pipeline.js");
+    const { SurfaceProviderAdapter } = await import("../enrichment/adapter.js");
+
+    // Wrap any legacy surface providers as enrichment providers
+    const allProviders = [...options.enrichmentProviders];
+    if (options.surfaceProviders) {
+      for (const sp of options.surfaceProviders) {
+        allProviders.push(new SurfaceProviderAdapter(sp));
+      }
+    }
+
+    const bounds = options.osm.bounds ?? inferBounds(result.graph);
+    await enrichGraph(result.graph, {
+      bounds,
+      providers: allProviders,
+    });
+
+    // Recompute surface stats after enrichment
+    result.stats.surface = computeSurfaceStats(result.graph);
   }
 
   return result;
@@ -334,10 +355,10 @@ export async function ingestFromOverpass(
   const startTime = Date.now();
 
   // Fetch from Overpass API
-  const response = await fetchOverpassData(bbox, options);
+  const { data } = await fetchOverpassData(bbox, options);
 
   // Parse response into OsmNode/OsmWay stream
-  const elements = parseOverpassResponse(response);
+  const elements = parseOverpassResponse(data);
 
   // Build graph using existing pipeline
   const { graph, stats: buildStats } = await buildGraphFromOsm(elements);

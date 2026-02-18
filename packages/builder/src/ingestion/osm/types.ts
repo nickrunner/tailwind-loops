@@ -49,7 +49,9 @@ export type OsmElement = OsmNode | OsmWay | OsmRelation;
  * 2. Map to our RoadClass type
  */
 export const RELEVANT_HIGHWAYS = [
-  // Major roads (cyclists may need to use)
+  // Major roads (cyclists may need to use or cross)
+  "trunk",
+  "trunk_link",
   "primary",
   "primary_link",
   "secondary",
@@ -90,8 +92,6 @@ export function isRelevantHighway(highway: string | undefined): highway is Relev
 export const EXCLUDED_HIGHWAYS = [
   "motorway",
   "motorway_link",
-  "trunk",
-  "trunk_link",
   "construction",
   "proposed",
   "abandoned",

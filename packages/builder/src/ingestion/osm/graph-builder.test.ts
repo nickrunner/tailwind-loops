@@ -228,7 +228,7 @@ describe("buildGraphFromOsm", () => {
     const { graph } = await buildGraphFromOsm(elements);
 
     const edge = [...graph.edges.values()][0]!;
-    expect(edge.attributes.surfaceClassification.surface).toBe("gravel");
+    expect(edge.attributes.surfaceClassification.surface).toBe("unpaved");
     expect(edge.attributes.surfaceClassification.confidence).toBeGreaterThan(0);
   });
 
@@ -242,7 +242,7 @@ describe("buildGraphFromOsm", () => {
     const { graph } = await buildGraphFromOsm(elements);
 
     const edge = [...graph.edges.values()][0]!;
-    expect(edge.attributes.infrastructure.hasDedicatedPath).toBe(true);
+    expect(edge.attributes.infrastructure.hasBicycleInfra).toBe(true);
     expect(edge.attributes.infrastructure.isSeparated).toBe(true);
   });
 

@@ -133,7 +133,7 @@ let loadInFlight = false;
 let currentProfile = null; // null = base, string = profile name
 let profileList = [];
 
-const ALL_CORRIDOR_TYPES = ['trail', 'path', 'quiet-road', 'collector', 'arterial', 'mixed'];
+const ALL_CORRIDOR_TYPES = ['trail', 'path', 'neighborhood', 'rural-road', 'collector', 'arterial', 'mixed'];
 
 // Which corridor types are hidden by default per activity
 const HIDDEN_BY_DEFAULT = {
@@ -435,7 +435,7 @@ function renderGeoJson(geojson) {
             <div class="name">${p.name || p.id}</div>
             <div>Type: ${p.corridorType} | ${p.lengthKm} km</div>
             <div>Road: ${p.roadClass} | Surface: ${p.surface} (${p.surfaceConfidence})</div>
-            <div>Infra: ${p.infraContinuity} | Sep: ${p.separationContinuity} | Stops: ${p.stopDensityPerKm}/km</div>
+            <div>Infra: ${p.infraContinuity} | Sep: ${p.separationContinuity} | Stops: ${p.stopDensityPerKm}/km | Crossings: ${p.crossingDensityPerKm}/km</div>
             <hr style="margin:4px 0;border-color:#555">
             ${barHtml(p.scoreOverall, 'Overall')}
             ${barHtml(p.scoreFlow, 'Flow')}

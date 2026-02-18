@@ -148,9 +148,11 @@ function edgeToFeature(edge: GraphEdge): GeoJsonFeature {
       oneWay: attributes.oneWay,
       lanes: attributes.lanes ?? null,
       speedLimit: attributes.speedLimit ?? null,
-      hasDedicatedPath: attributes.infrastructure.hasDedicatedPath,
+      hasBicycleInfra: attributes.infrastructure.hasBicycleInfra,
+      hasPedestrianPath: attributes.infrastructure.hasPedestrianPath,
       hasShoulder: attributes.infrastructure.hasShoulder,
       isSeparated: attributes.infrastructure.isSeparated,
+      hasTrafficCalming: attributes.infrastructure.hasTrafficCalming,
       featureType: "edge",
     },
   };

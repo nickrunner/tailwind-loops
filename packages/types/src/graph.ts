@@ -6,6 +6,8 @@
  * that corridors are derived from.
  */
 
+import type { EdgeEnrichment } from "./enrichment.js";
+
 /** Geographic coordinate (WGS84) */
 export interface Coordinate {
   lat: number;
@@ -44,10 +46,6 @@ export type RoadClass =
 /** Surface type classification */
 export type SurfaceType =
   | "paved"
-  | "asphalt"
-  | "concrete"
-  | "gravel"
-  | "dirt"
   | "unpaved"
   | "unknown";
 
@@ -95,12 +93,16 @@ export interface SurfaceClassification {
 
 /** Infrastructure for human-powered activities */
 export interface Infrastructure {
-  /** Dedicated path/lane (bike lane, sidewalk, etc.) */
-  hasDedicatedPath: boolean;
+  /** Bicycle-specific infrastructure (bike lane, cycle track, cycleway) */
+  hasBicycleInfra: boolean;
+  /** Pedestrian path (footway, sidewalk, generic path) */
+  hasPedestrianPath: boolean;
   /** Shoulder present and usable */
   hasShoulder: boolean;
   /** Separated from motor traffic */
   isSeparated: boolean;
+  /** Traffic calming present (speed bumps, chicanes, etc.) */
+  hasTrafficCalming: boolean;
 }
 
 /** Attributes of a graph edge derived from source data */
@@ -129,6 +131,8 @@ export interface EdgeAttributes {
   roadCrossingCount?: number;
   /** Whether this edge has a scenic designation (OSM scenic=yes) */
   scenicDesignation?: boolean;
+  /** Multi-source enrichment metadata (per-attribute confidence + observations) */
+  enrichment?: EdgeEnrichment;
 }
 
 /** Convenience accessor for surface type (most common use case) */

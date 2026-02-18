@@ -25,11 +25,19 @@ import {
   deriveName,
   buildCorridorGeometry,
 } from "./corridor-attributes.js";
+import {
+  getEffectiveMinLength,
+  type MinLengthByTier,
+} from "./chain-classification.js";
 
 /** Options for corridor construction */
 export interface CorridorBuilderOptions {
-  /** Minimum corridor length in meters (shorter stretches become connectors) */
+  /** Minimum corridor length in meters (shorter stretches become connectors).
+   *  Used as the "unnamed" tier fallback when minLengthByTier is not provided. */
   minLengthMeters?: number;
+  /** Per-tier minimum length overrides for smarter corridor detection.
+   *  When provided, chain classification uses infrastructure-aware thresholds. */
+  minLengthByTier?: MinLengthByTier;
   /** Maximum speed limit difference to merge edges (km/h) */
   maxSpeedDifference?: number;
   /** Whether to allow merging across minor name changes */
@@ -39,7 +47,7 @@ export interface CorridorBuilderOptions {
 }
 
 /** Default options for corridor building */
-export const DEFAULT_CORRIDOR_OPTIONS: Required<CorridorBuilderOptions> = {
+export const DEFAULT_CORRIDOR_OPTIONS: Required<Omit<CorridorBuilderOptions, "minLengthByTier">> & Pick<CorridorBuilderOptions, "minLengthByTier"> = {
   minLengthMeters: 1609, // ~1 mile
   maxSpeedDifference: 15,
   allowNameChanges: true,
@@ -130,7 +138,8 @@ export async function buildCorridors(
   let connectorIdx = 0;
 
   for (const chain of chains) {
-    if (chain.totalLengthMeters >= opts.minLengthMeters) {
+    const effectiveMinLength = getEffectiveMinLength(chain, graph, opts);
+    if (chain.totalLengthMeters >= effectiveMinLength) {
       // Step 3: Build Corridor
       const id = `corridor-${corridorIdx++}`;
       const attributes = aggregateAttributes(chain.edgeIds, graph);
@@ -242,7 +251,8 @@ export async function buildCorridors(
  * Classification rules:
  * - trail: cycleway/path road class + separation continuity > 0.7
  * - path: footway/path road class, shorter or not separated
- * - quiet-road: residential/unclassified/service, speed <= 40 or unknown
+ * - neighborhood: residential/unclassified/service, speed <= 40, with urban signals
+ * - rural-road: residential/unclassified/service, speed <= 40, without urban signals
  * - collector: secondary/tertiary
  * - arterial: primary/trunk/motorway
  * - mixed: none of the above clearly match
@@ -285,14 +295,23 @@ export function classifyCorridor(corridor: Corridor): CorridorType {
     return "collector";
   }
 
-  // Quiet road: residential/unclassified/service with low speed
+  // Neighborhood vs rural road: residential/unclassified/service with low speed
   if (
     predominantRoadClass === "residential" ||
     predominantRoadClass === "unclassified" ||
     predominantRoadClass === "service"
   ) {
     if (averageSpeedLimit == null || averageSpeedLimit <= 40) {
-      return "quiet-road";
+      const { crossingDensityPerKm, stopDensityPerKm, pedestrianPathContinuity, trafficCalmingContinuity } =
+        corridor.attributes;
+      // crossingDensityPerKm is topology-based (always reliable) —
+      // neighborhood grids have ~5-10 intersections/km, rural roads ~1-3
+      const isRural =
+        crossingDensityPerKm < 4 &&
+        stopDensityPerKm < 2 &&
+        pedestrianPathContinuity < 0.3 &&
+        trafficCalmingContinuity < 0.3;
+      return isRural ? "rural-road" : "neighborhood";
     }
   }
 
@@ -362,4 +381,10 @@ export {
   deriveName,
   buildCorridorGeometry,
   douglasPeucker,
+  nameConsistency,
 } from "./corridor-attributes.js";
+export {
+  getEffectiveMinLength,
+  chainHomogeneity,
+} from "./chain-classification.js";
+export type { MinLengthByTier } from "./chain-classification.js";

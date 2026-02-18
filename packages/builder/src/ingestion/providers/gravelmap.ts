@@ -87,8 +87,8 @@ export class GravelmapProvider implements SurfaceDataProvider {
 
   private toObservation(segment: GravelmapSegment): SurfaceObservation {
     const surfaceMap: Record<GravelmapSegment["surface"], SurfaceType> = {
-      gravel: "gravel",
-      dirt: "dirt",
+      gravel: "unpaved",
+      dirt: "unpaved",
       paved: "paved",
       unknown: "unknown",
     };

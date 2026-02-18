@@ -7,15 +7,17 @@ function makeEdge(overrides: Partial<EdgeAttributes> = {}): EdgeAttributes {
   return {
     roadClass: "residential",
     surfaceClassification: {
-      surface: "asphalt",
+      surface: "paved",
       confidence: 0.8,
       observations: [],
       hasConflict: false,
     },
     infrastructure: {
-      hasDedicatedPath: false,
+      hasBicycleInfra: false,
+      hasPedestrianPath: false,
       hasShoulder: false,
       isSeparated: false,
+      hasTrafficCalming: false,
     },
     oneWay: false,
     lengthMeters: 100,
@@ -46,24 +48,28 @@ describe("edgeCompatibility", () => {
         hasConflict: false,
       },
       infrastructure: {
-        hasDedicatedPath: true,
+        hasBicycleInfra: true,
+        hasPedestrianPath: false,
         hasShoulder: false,
         isSeparated: true,
+        hasTrafficCalming: false,
       },
       name: "Bike Trail",
     });
     const b = makeEdge({
       roadClass: "primary",
       surfaceClassification: {
-        surface: "gravel",
+        surface: "unpaved",
         confidence: 0.5,
         observations: [],
         hasConflict: false,
       },
       infrastructure: {
-        hasDedicatedPath: false,
+        hasBicycleInfra: false,
+        hasPedestrianPath: false,
         hasShoulder: true,
         isSeparated: false,
+        hasTrafficCalming: false,
       },
       name: "Highway 1",
     });
@@ -105,7 +111,7 @@ describe("edgeCompatibility", () => {
       const a = makeEdge();
       const b = makeEdge({
         surfaceClassification: {
-          surface: "gravel",
+          surface: "unpaved",
           confidence: 0.8,
           observations: [],
           hasConflict: false,
@@ -134,7 +140,7 @@ describe("edgeCompatibility", () => {
     it("treats asphalt and concrete as same group", () => {
       const a = makeEdge({
         surfaceClassification: {
-          surface: "asphalt",
+          surface: "paved",
           confidence: 0.8,
           observations: [],
           hasConflict: false,
@@ -142,7 +148,7 @@ describe("edgeCompatibility", () => {
       });
       const b = makeEdge({
         surfaceClassification: {
-          surface: "concrete",
+          surface: "paved",
           confidence: 0.8,
           observations: [],
           hasConflict: false,
@@ -215,16 +221,20 @@ describe("edgeCompatibility", () => {
     it("penalizes different infrastructure", () => {
       const a = makeEdge({
         infrastructure: {
-          hasDedicatedPath: true,
+          hasBicycleInfra: true,
+          hasPedestrianPath: false,
           hasShoulder: false,
           isSeparated: true,
+          hasTrafficCalming: false,
         },
       });
       const b = makeEdge({
         infrastructure: {
-          hasDedicatedPath: false,
+          hasBicycleInfra: false,
+          hasPedestrianPath: false,
           hasShoulder: false,
           isSeparated: false,
+          hasTrafficCalming: false,
         },
       });
       const allSame = edgeCompatibility(makeEdge(), makeEdge());

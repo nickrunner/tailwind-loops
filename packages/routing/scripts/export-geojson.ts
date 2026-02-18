@@ -44,7 +44,7 @@ async function main() {
   }
 
   if (flags.includes("--unpaved")) {
-    options.surfaceTypes = ["gravel", "dirt", "unpaved"];
+    options.surfaceTypes = ["unpaved"];
   }
 
   console.log("Exporting to GeoJSON...");

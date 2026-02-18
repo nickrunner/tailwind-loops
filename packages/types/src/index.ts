@@ -14,3 +14,4 @@ export * from "./corridor.js";
 export * from "./intent.js";
 export * from "./route.js";
 export * from "./geo.js";
+export * from "./enrichment.js";

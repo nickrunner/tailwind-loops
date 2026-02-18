@@ -16,16 +16,19 @@ function makeCorridor(overrides: Partial<Corridor> = {}): Corridor {
   return {
     id: "corridor-0",
     name: "Main Street",
-    type: "quiet-road",
+    type: "neighborhood",
     attributes: {
       lengthMeters: 500,
       predominantRoadClass: "residential",
-      predominantSurface: "asphalt",
+      predominantSurface: "paved",
       surfaceConfidence: 0.8,
-      infrastructureContinuity: 0,
+      bicycleInfraContinuity: 0,
+      pedestrianPathContinuity: 0,
       separationContinuity: 0,
       stopDensityPerKm: 1,
+      crossingDensityPerKm: 0,
       turnsCount: 0,
+      trafficCalmingContinuity: 0,
       scenicScore: 0,
     },
     edgeIds: ["e1", "e2"],
@@ -95,7 +98,7 @@ describe("corridorNetworkToGeoJson", () => {
     expect(f.geometry.type).toBe("LineString");
     expect(f.geometry.coordinates).toHaveLength(3);
     expect(f.properties["featureType"]).toBe("corridor");
-    expect(f.properties["corridorType"]).toBe("quiet-road");
+    expect(f.properties["corridorType"]).toBe("neighborhood");
     expect(f.properties["name"]).toBe("Main Street");
   });
 
@@ -123,7 +126,7 @@ describe("corridorNetworkToGeoJson", () => {
     const corridors = [
       makeCorridor({ id: "c0", type: "trail" }),
       makeCorridor({ id: "c1", type: "arterial" }),
-      makeCorridor({ id: "c2", type: "quiet-road" }),
+      makeCorridor({ id: "c2", type: "neighborhood" }),
     ];
     const network = makeNetwork(corridors);
     const geojson = corridorNetworkToGeoJson(network, {
@@ -195,7 +198,7 @@ describe("corridorNetworkToGeoJson", () => {
     const props = geojson.features[0]!.properties;
     expect(props["oneWay"]).toBe(true);
     expect(props["roadClass"]).toBe("residential");
-    expect(props["surface"]).toBe("asphalt");
+    expect(props["surface"]).toBe("paved");
     expect(props["edgeCount"]).toBe(2);
     expect(props["lengthKm"]).toBe(0.5);
   });
@@ -236,7 +239,8 @@ describe("corridorNetworkToGeoJson", () => {
     const types: CorridorType[] = [
       "trail",
       "path",
-      "quiet-road",
+      "neighborhood",
+      "rural-road",
       "collector",
       "arterial",
       "mixed",
@@ -244,7 +248,8 @@ describe("corridorNetworkToGeoJson", () => {
     const expectedColors: Record<string, string> = {
       trail: "#2ecc71",
       path: "#27ae60",
-      "quiet-road": "#3498db",
+      neighborhood: "#3498db",
+      "rural-road": "#1abc9c",
       collector: "#f39c12",
       arterial: "#e74c3c",
       mixed: "#9b59b6",

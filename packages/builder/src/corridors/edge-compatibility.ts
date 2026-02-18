@@ -50,11 +50,7 @@ const ROAD_CLASS_RANK: Record<RoadClass, number> = {
 
 /** Surface groups for compatibility: paved surfaces vs unpaved */
 const SURFACE_GROUPS: Record<SurfaceType, number> = {
-  asphalt: 0,
-  concrete: 0,
   paved: 0,
-  gravel: 1,
-  dirt: 2,
   unpaved: 1,
   unknown: -1,
 };
@@ -146,11 +142,13 @@ function scoreInfrastructure(
   b: EdgeAttributes["infrastructure"]
 ): number {
   let matches = 0;
-  let total = 3;
+  let total = 5;
 
-  if (a.hasDedicatedPath === b.hasDedicatedPath) matches++;
+  if (a.hasBicycleInfra === b.hasBicycleInfra) matches++;
+  if (a.hasPedestrianPath === b.hasPedestrianPath) matches++;
   if (a.hasShoulder === b.hasShoulder) matches++;
   if (a.isSeparated === b.isSeparated) matches++;
+  if (a.hasTrafficCalming === b.hasTrafficCalming) matches++;
 
   return matches / total;
 }

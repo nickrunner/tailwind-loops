@@ -7,20 +7,17 @@
     "stopDecayRate": 0.2,
     "lengthBlend": 0.6
   },
-  "safety": { "infrastructure": 0.3, "separation": 0.3, "speedLimit": 0.2, "roadClass": 0.2 },
+  "safety": { "roadClass": 0.25, "speedLimit": 0.15, "bicycleInfra": 0.0, "pedestrianPath": 0.20, "separation": 0.20, "trafficCalming": 0.20 },
   "surfaceScores": {
     "paved": 0.8,
-    "asphalt": 0.7,
-    "concrete": 0.7,
-    "gravel": 0.8,
-    "dirt": 0.8,
-    "unpaved": 0.6,
+    "unpaved": 0.8,
     "unknown": 0.5
   },
   "characterScores": {
     "path": 1,
     "trail": 0.9,
-    "quiet-road": 0.8,
+    "neighborhood": 0.9,
+    "rural-road": 0.5,
     "collector": 0.3,
     "arterial": 0.1,
     "mixed": 0.2

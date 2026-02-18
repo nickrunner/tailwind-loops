@@ -54,36 +54,36 @@ describe("extractRoadClass", () => {
 describe("extractSurface", () => {
   it("returns high confidence for explicit asphalt tag", () => {
     const obs = extractSurface({ surface: "asphalt" });
-    expect(obs.surface).toBe("asphalt");
+    expect(obs.surface).toBe("paved");
     expect(obs.source).toBe("osm-surface-tag");
     expect(obs.sourceConfidence).toBe(0.8);
   });
 
   it("returns high confidence for explicit gravel tag", () => {
     const obs = extractSurface({ surface: "gravel" });
-    expect(obs.surface).toBe("gravel");
+    expect(obs.surface).toBe("unpaved");
     expect(obs.source).toBe("osm-surface-tag");
     expect(obs.sourceConfidence).toBe(0.8);
   });
 
-  it("maps fine_gravel to gravel", () => {
+  it("maps fine_gravel to unpaved", () => {
     const obs = extractSurface({ surface: "fine_gravel" });
-    expect(obs.surface).toBe("gravel");
+    expect(obs.surface).toBe("unpaved");
   });
 
-  it("maps compacted to gravel", () => {
+  it("maps compacted to unpaved", () => {
     const obs = extractSurface({ surface: "compacted" });
-    expect(obs.surface).toBe("gravel");
+    expect(obs.surface).toBe("unpaved");
   });
 
-  it("maps dirt to dirt", () => {
+  it("maps dirt to unpaved", () => {
     const obs = extractSurface({ surface: "dirt" });
-    expect(obs.surface).toBe("dirt");
+    expect(obs.surface).toBe("unpaved");
   });
 
-  it("maps earth to dirt", () => {
+  it("maps earth to unpaved", () => {
     const obs = extractSurface({ surface: "earth" });
-    expect(obs.surface).toBe("dirt");
+    expect(obs.surface).toBe("unpaved");
   });
 
   it("returns low confidence for highway inference", () => {
@@ -106,7 +106,7 @@ describe("extractSurface", () => {
 
   it("prefers explicit surface tag over highway inference", () => {
     const obs = extractSurface({ highway: "residential", surface: "gravel" });
-    expect(obs.surface).toBe("gravel");
+    expect(obs.surface).toBe("unpaved");
     expect(obs.source).toBe("osm-surface-tag");
   });
 
@@ -119,31 +119,32 @@ describe("extractSurface", () => {
 describe("extractInfrastructure", () => {
   it("returns all false for undefined tags", () => {
     const infra = extractInfrastructure(undefined);
-    expect(infra.hasDedicatedPath).toBe(false);
+    expect(infra.hasBicycleInfra).toBe(false);
+    expect(infra.hasPedestrianPath).toBe(false);
     expect(infra.hasShoulder).toBe(false);
     expect(infra.isSeparated).toBe(false);
   });
 
   it("detects cycleway lane as dedicated path", () => {
     const infra = extractInfrastructure({ cycleway: "lane" });
-    expect(infra.hasDedicatedPath).toBe(true);
+    expect(infra.hasBicycleInfra).toBe(true);
   });
 
   it("detects cycleway track as dedicated and separated", () => {
     const infra = extractInfrastructure({ cycleway: "track" });
-    expect(infra.hasDedicatedPath).toBe(true);
+    expect(infra.hasBicycleInfra).toBe(true);
     expect(infra.isSeparated).toBe(true);
   });
 
   it("detects dedicated cycleway highway as separated", () => {
     const infra = extractInfrastructure({ highway: "cycleway" });
-    expect(infra.hasDedicatedPath).toBe(true);
+    expect(infra.hasBicycleInfra).toBe(true);
     expect(infra.isSeparated).toBe(true);
   });
 
   it("detects footway as separated", () => {
     const infra = extractInfrastructure({ highway: "footway" });
-    expect(infra.hasDedicatedPath).toBe(true);
+    expect(infra.hasPedestrianPath).toBe(true);
     expect(infra.isSeparated).toBe(true);
   });
 
@@ -161,6 +162,78 @@ describe("extractInfrastructure", () => {
   it("detects segregated path", () => {
     const infra = extractInfrastructure({ highway: "path", segregated: "yes" });
     expect(infra.isSeparated).toBe(true);
+  });
+
+  // ─── cycleway:left / cycleway:right / cycleway:both ───────────────────────
+
+  it("detects cycleway:right=lane as dedicated path", () => {
+    const infra = extractInfrastructure({ highway: "tertiary", "cycleway:right": "lane" });
+    expect(infra.hasBicycleInfra).toBe(true);
+  });
+
+  it("detects cycleway:left=track as dedicated and separated", () => {
+    const infra = extractInfrastructure({ highway: "secondary", "cycleway:left": "track" });
+    expect(infra.hasBicycleInfra).toBe(true);
+    expect(infra.isSeparated).toBe(true);
+  });
+
+  it("detects cycleway:both=lane as dedicated path", () => {
+    const infra = extractInfrastructure({ highway: "residential", "cycleway:both": "lane" });
+    expect(infra.hasBicycleInfra).toBe(true);
+  });
+
+  it("detects cycleway:both=track as separated", () => {
+    const infra = extractInfrastructure({ highway: "residential", "cycleway:both": "track" });
+    expect(infra.isSeparated).toBe(true);
+  });
+
+  it("ignores cycleway:right=no", () => {
+    const infra = extractInfrastructure({ highway: "residential", "cycleway:right": "no" });
+    expect(infra.hasBicycleInfra).toBe(false);
+  });
+
+  it("detects shared_busway as dedicated", () => {
+    const infra = extractInfrastructure({ "cycleway:right": "shared_busway" });
+    expect(infra.hasBicycleInfra).toBe(true);
+  });
+
+  // ─── bicycle_road / cyclestreet ───────────────────────────────────────────
+
+  it("detects bicycle_road=yes as dedicated path", () => {
+    const infra = extractInfrastructure({ highway: "residential", bicycle_road: "yes" });
+    expect(infra.hasBicycleInfra).toBe(true);
+  });
+
+  it("detects cyclestreet=yes as dedicated path", () => {
+    const infra = extractInfrastructure({ highway: "residential", cyclestreet: "yes" });
+    expect(infra.hasBicycleInfra).toBe(true);
+  });
+
+  // ─── traffic calming ──────────────────────────────────────────────────────
+
+  it("detects traffic_calming=bump", () => {
+    const infra = extractInfrastructure({ highway: "residential", traffic_calming: "bump" });
+    expect(infra.hasTrafficCalming).toBe(true);
+  });
+
+  it("detects traffic_calming=chicane", () => {
+    const infra = extractInfrastructure({ highway: "residential", traffic_calming: "chicane" });
+    expect(infra.hasTrafficCalming).toBe(true);
+  });
+
+  it("does not detect traffic_calming=no", () => {
+    const infra = extractInfrastructure({ highway: "residential", traffic_calming: "no" });
+    expect(infra.hasTrafficCalming).toBe(false);
+  });
+
+  it("detects living_street as traffic calmed", () => {
+    const infra = extractInfrastructure({ highway: "living_street" });
+    expect(infra.hasTrafficCalming).toBe(true);
+  });
+
+  it("returns false for hasTrafficCalming with no calming tags", () => {
+    const infra = extractInfrastructure({ highway: "residential" });
+    expect(infra.hasTrafficCalming).toBe(false);
   });
 });
 

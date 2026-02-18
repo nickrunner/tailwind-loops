@@ -75,10 +75,10 @@ export interface Constraints {
  */
 export const CORRIDOR_TYPES_BY_ACTIVITY: Record<ActivityType, CorridorType[]> =
   {
-    "road-cycling": ["quiet-road", "collector", "arterial", "mixed"],
-    "gravel-cycling": ["trail", "quiet-road", "collector", "mixed"],
-    running: ["trail", "path", "quiet-road"],
-    walking: ["trail", "path", "quiet-road"],
+    "road-cycling": ["rural-road", "collector", "arterial", "mixed"],
+    "gravel-cycling": ["trail", "rural-road", "collector", "mixed"],
+    running: ["trail", "path", "neighborhood"],
+    walking: ["trail", "path", "neighborhood"],
   };
 
 /** The routing policy derived from intent - used by search */

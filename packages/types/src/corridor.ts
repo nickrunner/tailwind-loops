@@ -11,6 +11,7 @@
  */
 
 import type { Coordinate, RoadClass, SurfaceType } from "./graph.js";
+import type { CorridorConfidence } from "./enrichment.js";
 import type { ActivityType } from "./intent.js";
 
 /** Score breakdown for a corridor (all values 0-1, higher is better) */
@@ -27,7 +28,8 @@ export interface CorridorScore {
 export type CorridorType =
   | "trail" // Dedicated multi-use path (rail-trail, greenway)
   | "path" // Smaller path (park path, connector)
-  | "quiet-road" // Low-traffic residential or rural road
+  | "neighborhood" // Urban/suburban residential (frequent stops, traffic calming)
+  | "rural-road" // Low-density rural/country road (few stops, no sidewalks)
   | "collector" // Medium-traffic road with acceptable conditions
   | "arterial" // Higher-traffic but may have infrastructure
   | "mixed"; // Corridor with varying character (less desirable)
@@ -44,16 +46,24 @@ export interface CorridorAttributes {
   surfaceConfidence: number;
   /** Average speed limit across the corridor (km/h) */
   averageSpeedLimit?: number;
-  /** Stop density: stops per km (stop signs, traffic lights) */
+  /** Stop density: stops per km (stop signs, traffic lights, road crossings) */
   stopDensityPerKm: number;
-  /** Fraction of corridor with dedicated infrastructure (0-1) */
-  infrastructureContinuity: number;
+  /** Crossing density: graph intersections per km (from topology, not tags) */
+  crossingDensityPerKm: number;
+  /** Fraction of corridor with bicycle infrastructure — bike lanes, cycle tracks, cycleways (0-1) */
+  bicycleInfraContinuity: number;
+  /** Fraction of corridor that is pedestrian path — footways, sidewalks, generic paths (0-1) */
+  pedestrianPathContinuity: number;
   /** Fraction of corridor separated from motor traffic (0-1) */
   separationContinuity: number;
   /** Number of sharp turns or direction changes */
   turnsCount: number;
+  /** Fraction of corridor with traffic calming measures (0-1) */
+  trafficCalmingContinuity: number;
   /** Fraction of corridor length with scenic designation (0-1) */
   scenicScore: number;
+  /** Per-dimension confidence from multi-source enrichment */
+  confidence?: CorridorConfidence;
 }
 
 /** A corridor - continuous stretch with uniform riding character */

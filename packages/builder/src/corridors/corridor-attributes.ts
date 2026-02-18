@@ -10,6 +10,7 @@ import type {
   Graph,
   RoadClass,
   SurfaceType,
+  CorridorConfidence,
 } from "@tailwind-loops/types";
 
 import type { CorridorAttributes } from "@tailwind-loops/types";
@@ -28,13 +29,17 @@ export function aggregateAttributes(
   const roadClassLengths = new Map<RoadClass, number>();
   const surfaceLengths = new Map<SurfaceType, number>();
   let weightedConfidence = 0;
-  let dedicatedPathLength = 0;
+  let bicycleInfraLength = 0;
+  let pedestrianPathLength = 0;
   let separatedLength = 0;
   let weightedSpeedLimit = 0;
   let speedLimitLength = 0;
   let turnsCount = 0;
   let totalStopControls = 0;
   let scenicLength = 0;
+  let trafficCalmingLength = 0;
+  const seenNodes = new Set<string>();
+  let intersectionCount = 0;
 
   for (let i = 0; i < edgeIds.length; i++) {
     const edge = graph.edges.get(edgeIds[i]!)!;
@@ -52,12 +57,20 @@ export function aggregateAttributes(
     // Weighted confidence
     weightedConfidence += edge.attributes.surfaceClassification.confidence * len;
 
-    // Infrastructure continuity
-    if (edge.attributes.infrastructure.hasDedicatedPath) {
-      dedicatedPathLength += len;
+    // Infrastructure continuity (bicycle vs pedestrian)
+    if (edge.attributes.infrastructure.hasBicycleInfra) {
+      bicycleInfraLength += len;
+    }
+    if (edge.attributes.infrastructure.hasPedestrianPath) {
+      pedestrianPathLength += len;
     }
     if (edge.attributes.infrastructure.isSeparated) {
       separatedLength += len;
+    }
+
+    // Traffic calming
+    if (edge.attributes.infrastructure.hasTrafficCalming) {
+      trafficCalmingLength += len;
     }
 
     // Scenic designation
@@ -78,6 +91,17 @@ export function aggregateAttributes(
       + (edge.attributes.trafficSignalCount ?? 0)
       + (edge.attributes.roadCrossingCount ?? 0);
 
+    // Count intersection nodes (graph nodes with >2 outgoing edges)
+    // This is topology-based, always reliable regardless of OSM tagging
+    for (const nodeId of [edge.fromNodeId, edge.toNodeId]) {
+      if (seenNodes.has(nodeId)) continue;
+      seenNodes.add(nodeId);
+      const outDegree = graph.adjacency.get(nodeId)?.length ?? 0;
+      if (outDegree > 2) {
+        intersectionCount++;
+      }
+    }
+
     // Turns: angle changes > 30 degrees between consecutive edges
     if (i > 0) {
       const prevEdge = graph.edges.get(edgeIds[i - 1]!)!;
@@ -88,20 +112,100 @@ export function aggregateAttributes(
     }
   }
 
+  // Aggregate enrichment confidence per dimension
+  const confidence = aggregateConfidence(edgeIds, graph, totalLength);
+
   return {
     lengthMeters: totalLength,
     predominantRoadClass: maxByLength(roadClassLengths)!,
     predominantSurface: maxByLength(surfaceLengths)!,
     surfaceConfidence: totalLength > 0 ? weightedConfidence / totalLength : 0,
-    infrastructureContinuity: totalLength > 0 ? dedicatedPathLength / totalLength : 0,
+    bicycleInfraContinuity: totalLength > 0 ? bicycleInfraLength / totalLength : 0,
+    pedestrianPathContinuity: totalLength > 0 ? pedestrianPathLength / totalLength : 0,
     separationContinuity: totalLength > 0 ? separatedLength / totalLength : 0,
     averageSpeedLimit:
       speedLimitLength > 0
         ? weightedSpeedLimit / speedLimitLength
         : undefined,
     stopDensityPerKm: totalLength > 0 ? (totalStopControls / (totalLength / 1000)) : 0,
+    crossingDensityPerKm: totalLength > 0 ? (intersectionCount / (totalLength / 1000)) : 0,
     turnsCount,
+    trafficCalmingContinuity: totalLength > 0 ? trafficCalmingLength / totalLength : 0,
     scenicScore: totalLength > 0 ? scenicLength / totalLength : 0,
+    confidence,
+  };
+}
+
+/**
+ * Aggregate per-edge enrichment confidence into corridor-level confidence.
+ * Returns undefined if no edges have enrichment data.
+ */
+function aggregateConfidence(
+  edgeIds: string[],
+  graph: Graph,
+  totalLength: number
+): CorridorConfidence | undefined {
+  if (totalLength === 0) return undefined;
+
+  let hasSomeEnrichment = false;
+  let surfaceConfSum = 0;
+  let surfaceWeightSum = 0;
+  let speedConfSum = 0;
+  let speedWeightSum = 0;
+  let trafficConfSum = 0;
+  let trafficWeightSum = 0;
+  let infraConfSum = 0;
+  let infraWeightSum = 0;
+  let scenicConfSum = 0;
+  let scenicWeightSum = 0;
+
+  for (const edgeId of edgeIds) {
+    const edge = graph.edges.get(edgeId)!;
+    const len = edge.attributes.lengthMeters;
+    const enrichment = edge.attributes.enrichment;
+    if (!enrichment) continue;
+
+    hasSomeEnrichment = true;
+
+    if (enrichment.surface) {
+      surfaceConfSum += enrichment.surface.confidence * len;
+      surfaceWeightSum += len;
+    }
+    if (enrichment["speed-limit"]) {
+      speedConfSum += enrichment["speed-limit"].confidence * len;
+      speedWeightSum += len;
+    }
+
+    // Traffic control: average across stop-sign, traffic-signal, road-crossing
+    const tcAttrs = [
+      enrichment["stop-sign"],
+      enrichment["traffic-signal"],
+      enrichment["road-crossing"],
+    ].filter(Boolean);
+    if (tcAttrs.length > 0) {
+      const avgTcConf = tcAttrs.reduce((s, a) => s + a!.confidence, 0) / tcAttrs.length;
+      trafficConfSum += avgTcConf * len;
+      trafficWeightSum += len;
+    }
+
+    if (enrichment["bicycle-infra"]) {
+      infraConfSum += enrichment["bicycle-infra"].confidence * len;
+      infraWeightSum += len;
+    }
+    if (enrichment.scenic) {
+      scenicConfSum += enrichment.scenic.confidence * len;
+      scenicWeightSum += len;
+    }
+  }
+
+  if (!hasSomeEnrichment) return undefined;
+
+  return {
+    surface: surfaceWeightSum > 0 ? surfaceConfSum / surfaceWeightSum : 0,
+    speedLimit: speedWeightSum > 0 ? speedConfSum / speedWeightSum : 0,
+    trafficControl: trafficWeightSum > 0 ? trafficConfSum / trafficWeightSum : 0,
+    infrastructure: infraWeightSum > 0 ? infraConfSum / infraWeightSum : 0,
+    scenic: scenicWeightSum > 0 ? scenicConfSum / scenicWeightSum : 0,
   };
 }
 
@@ -281,6 +385,43 @@ function bearing(a: Coordinate, b: Coordinate): number {
 /** Check if two coordinates are the same point. */
 function coordsEqual(a: Coordinate, b: Coordinate): boolean {
   return a.lat === b.lat && a.lng === b.lng;
+}
+
+/**
+ * Compute the fraction of total chain length covered by the most common name.
+ *
+ * Returns 0 if all edges are unnamed, otherwise a value in (0, 1]
+ * where 1.0 means every edge shares the same name.
+ *
+ * This is a lightweight version of `deriveName()` that returns coverage
+ * fraction rather than the name itself. Used by chain classification
+ * to give a name-continuity bonus.
+ */
+export function nameConsistency(
+  edgeIds: string[],
+  graph: Graph
+): number {
+  let totalLength = 0;
+  const nameLengths = new Map<string, number>();
+
+  for (const edgeId of edgeIds) {
+    const edge = graph.edges.get(edgeId)!;
+    const len = edge.attributes.lengthMeters;
+    totalLength += len;
+    const name = edge.attributes.name;
+    if (name) {
+      nameLengths.set(name, (nameLengths.get(name) ?? 0) + len);
+    }
+  }
+
+  if (totalLength === 0 || nameLengths.size === 0) return 0;
+
+  let bestLen = 0;
+  for (const len of nameLengths.values()) {
+    if (len > bestLen) bestLen = len;
+  }
+
+  return bestLen / totalLength;
 }
 
 /** Find the key with the greatest accumulated length. */

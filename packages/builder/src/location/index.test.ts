@@ -81,13 +81,16 @@ describe("buildCorridorsForLocation", () => {
     // This is an integration-style test with a mocked Overpass response
     vi.mock("../ingestion/overpass/query.js", () => ({
       fetchOverpassData: vi.fn().mockResolvedValue({
-        version: 0.6,
-        generator: "test",
-        osm3s: {
-          timestamp_osm_base: "2024-01-01T00:00:00Z",
-          copyright: "test",
+        data: {
+          version: 0.6,
+          generator: "test",
+          osm3s: {
+            timestamp_osm_base: "2024-01-01T00:00:00Z",
+            copyright: "test",
+          },
+          elements: buildTestElements(),
         },
-        elements: buildTestElements(),
+        fetchedBbox: { minLat: 42.95, maxLat: 43.0, minLng: -85.7, maxLng: -85.65 },
       }),
       buildOverpassQuery: vi.fn().mockReturnValue("[out:json];"),
     }));

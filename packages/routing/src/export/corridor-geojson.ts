@@ -35,7 +35,8 @@ interface GeoJsonLineString {
 const CORRIDOR_TYPE_COLORS: Record<CorridorType, string> = {
   trail: "#2ecc71", // green — dedicated paths
   path: "#27ae60", // darker green — smaller paths
-  "quiet-road": "#3498db", // blue — low-traffic residential
+  neighborhood: "#3498db", // blue — urban/suburban residential
+  "rural-road": "#1abc9c", // teal — low-density rural roads
   collector: "#f39c12", // orange — medium-traffic
   arterial: "#e74c3c", // red — high-traffic
   mixed: "#9b59b6", // purple — mixed character
@@ -175,11 +176,16 @@ function corridorToFeature(
     roadClass: attributes.predominantRoadClass,
     surface: attributes.predominantSurface,
     surfaceConfidence: Math.round(attributes.surfaceConfidence * 100) / 100,
-    infraContinuity:
-      Math.round(attributes.infrastructureContinuity * 100) / 100,
+    bicycleInfraContinuity:
+      Math.round(attributes.bicycleInfraContinuity * 100) / 100,
+    pedestrianPathContinuity:
+      Math.round(attributes.pedestrianPathContinuity * 100) / 100,
     separationContinuity:
       Math.round(attributes.separationContinuity * 100) / 100,
+    trafficCalmingContinuity:
+      Math.round(attributes.trafficCalmingContinuity * 100) / 100,
     stopDensityPerKm: Math.round(attributes.stopDensityPerKm * 100) / 100,
+    crossingDensityPerKm: Math.round(attributes.crossingDensityPerKm * 100) / 100,
     edgeCount: corridor.edgeIds.length,
   };
 
@@ -301,7 +307,9 @@ function strokeWidthForType(type: CorridorType): number {
       return 3;
     case "collector":
       return 2.5;
-    case "quiet-road":
+    case "neighborhood":
+      return 2;
+    case "rural-road":
       return 2;
     case "mixed":
       return 2;

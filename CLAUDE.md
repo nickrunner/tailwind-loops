@@ -44,7 +44,7 @@ The pipeline produces a `CorridorNetwork` containing both corridors and connecto
 - **SurfaceClassification**: Surface type + confidence score (0-1) + observations from multiple sources. Surface is critical for cycling—gravel vs paved determines route viability.
 - **ActivityIntent**: What user wants (activity type, distance, surface/traffic tolerance)
 - **RoutingPolicy**: Weights and constraints derived from intent, used by search
-- **Corridor**: Continuous stretch with CorridorType (trail, path, quiet-road, collector, arterial)
+- **Corridor**: Continuous stretch with CorridorType (trail, path, neighborhood, rural-road, collector, arterial)
 - **Connector**: Short segment linking corridors, with attributes for crossing difficulty, signals, stops
 
 ### Corridor Network Model

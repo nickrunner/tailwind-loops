@@ -16,6 +16,7 @@
 
 import type {
   Corridor,
+  CorridorConfidence,
   CorridorScore,
   CorridorType,
   RoadClass,
@@ -37,10 +38,12 @@ export interface FlowParams {
 
 /** Tunable sub-weights for the safety scoring dimension */
 export interface SafetyParams {
-  infrastructure: number;
+  bicycleInfra: number;
+  pedestrianPath: number;
   separation: number;
   speedLimit: number;
   roadClass: number;
+  trafficCalming: number;
 }
 
 /** All tunable scoring parameters bundled together */
@@ -50,6 +53,10 @@ export interface ScoringParams {
   safety: SafetyParams;
   surfaceScores: Record<SurfaceType, number>;
   characterScores: Record<CorridorType, number>;
+  /** Exponential decay rate for crossing density on character score.
+   *  Higher values penalize frequent crossings more aggressively.
+   *  Character score is multiplied by exp(-rate * crossingDensityPerKm). */
+  crossingDecayRate: number;
   surfaceConfidenceMinFactor: number;
   scenicBoost: number;
 }
@@ -75,14 +82,20 @@ export function scoreFlow(corridor: Corridor): number {
 
 /** Parameterized flow scoring. */
 export function scoreFlowWithParams(corridor: Corridor, params: FlowParams): number {
-  const { lengthMeters, stopDensityPerKm } = corridor.attributes;
+  const { lengthMeters, stopDensityPerKm, confidence } = corridor.attributes;
 
   const lengthScore = Math.min(
     1,
     Math.log(1 + lengthMeters / params.lengthLogDenominator) /
       Math.log(1 + params.lengthLogNumerator / params.lengthLogDenominator)
   );
-  const stopScore = Math.exp(-params.stopDecayRate * stopDensityPerKm);
+  let stopScore = Math.exp(-params.stopDecayRate * stopDensityPerKm);
+
+  // When traffic control confidence is low, dampen stop score toward neutral (0.5)
+  if (confidence?.trafficControl != null && confidence.trafficControl < 1) {
+    const tc = confidence.trafficControl;
+    stopScore = stopScore * tc + 0.5 * (1 - tc);
+  }
 
   return params.lengthBlend * lengthScore + (1 - params.lengthBlend) * stopScore;
 }
@@ -99,12 +112,24 @@ const SPEED_LIMIT_SCORES: [number, number][] = [
   [80, 0.1]
 ];
 
-function scoreSpeedLimit(speedLimit: number | undefined): number {
+function scoreSpeedLimit(
+  speedLimit: number | undefined,
+  confidence?: number
+): number {
   if (speedLimit == null) return 0.5;
+  let raw = 0.1;
   for (const [threshold, score] of SPEED_LIMIT_SCORES) {
-    if (speedLimit <= threshold) return score;
+    if (speedLimit <= threshold) {
+      raw = score;
+      break;
+    }
   }
-  return 0.1;
+  // When enrichment confidence is available, scale toward neutral (0.5) at low confidence
+  if (confidence != null && confidence < 1) {
+    const minFactor = 0.5;
+    return raw * (minFactor + (1 - minFactor) * confidence);
+  }
+  return raw;
 }
 
 const ROAD_CLASS_SAFETY: Record<string, number> = {
@@ -113,11 +138,11 @@ const ROAD_CLASS_SAFETY: Record<string, number> = {
   footway: 1.0,
   residential: 0.8,
   service: 0.8,
-  unclassified: 0.8,
-  tertiary: 0.6,
-  secondary: 0.4,
-  track: 0.6,
-  primary: 0.2,
+  unclassified: 0.7,
+  tertiary: 0.5,
+  secondary: 0.3,
+  track: 0.7,
+  primary: 0.15,
   trunk: 0.0,
   motorway: 0.0
 };
@@ -127,32 +152,43 @@ function scoreRoadClassSafety(roadClass: RoadClass): number {
 }
 
 /**
- * Score the safety of a corridor based on infrastructure, separation,
- * speed limits, and road class.
+ * Score the safety of a corridor.
+ *
+ * Uses activity-neutral defaults (equal weight to bicycle and pedestrian infra).
+ * In practice, callers should use scoreSafetyWithParams with activity-specific
+ * weights — e.g. road cycling weights bicycleInfra heavily and pedestrianPath
+ * at zero, while walking does the reverse.
  */
 export function scoreSafety(corridor: Corridor): number {
   return scoreSafetyWithParams(corridor, {
-    infrastructure: 0.3,
-    separation: 0.3,
-    speedLimit: 0.2,
-    roadClass: 0.2
+    roadClass: 0.30,
+    speedLimit: 0.20,
+    bicycleInfra: 0.10,
+    pedestrianPath: 0.10,
+    separation: 0.20,
+    trafficCalming: 0.10,
   });
 }
 
 /** Parameterized safety scoring. */
 export function scoreSafetyWithParams(corridor: Corridor, params: SafetyParams): number {
   const {
-    infrastructureContinuity,
+    bicycleInfraContinuity,
+    pedestrianPathContinuity,
     separationContinuity,
     averageSpeedLimit,
-    predominantRoadClass
+    predominantRoadClass,
+    trafficCalmingContinuity,
+    confidence,
   } = corridor.attributes;
 
   return (
-    params.infrastructure * infrastructureContinuity +
+    params.roadClass * scoreRoadClassSafety(predominantRoadClass) +
+    params.speedLimit * scoreSpeedLimit(averageSpeedLimit, confidence?.speedLimit) +
+    params.bicycleInfra * bicycleInfraContinuity +
+    params.pedestrianPath * pedestrianPathContinuity +
     params.separation * separationContinuity +
-    params.speedLimit * scoreSpeedLimit(averageSpeedLimit) +
-    params.roadClass * scoreRoadClassSafety(predominantRoadClass)
+    params.trafficCalming * trafficCalmingContinuity
   );
 }
 
@@ -161,48 +197,32 @@ export function scoreSafetyWithParams(corridor: Corridor, params: SafetyParams):
 // ---------------------------------------------------------------------------
 
 /**
- * Road cycling: MUST be paved. Gravel/dirt/unpaved are disqualifying (score 0).
+ * Road cycling: MUST be paved. Unpaved is disqualifying (score 0).
  */
 const SURFACE_SCORES_ROAD_CYCLING: Record<SurfaceType, number> = {
-  asphalt: 1.0,
-  concrete: 0.9,
-  paved: 0.9,
-  gravel: 0.0,
-  dirt: 0.0,
+  paved: 1.0,
   unpaved: 0.0,
   unknown: 0.3
 };
 
 /**
- * Gravel cycling: strongly prefers gravel and unpaved. Paved is OK but not ideal.
+ * Gravel cycling: strongly prefers unpaved. Paved is OK but not ideal.
  */
 const SURFACE_SCORES_GRAVEL_CYCLING: Record<SurfaceType, number> = {
-  gravel: 1.0,
-  dirt: 0.9,
-  unpaved: 0.8,
-  asphalt: 0.4,
-  concrete: 0.3,
   paved: 0.4,
+  unpaved: 1.0,
   unknown: 0.4
 };
 
 const SURFACE_SCORES_RUNNING: Record<SurfaceType, number> = {
-  dirt: 0.9,
-  gravel: 0.8,
-  asphalt: 0.7,
   paved: 0.7,
-  concrete: 0.6,
-  unpaved: 0.6,
+  unpaved: 0.9,
   unknown: 0.4
 };
 
 const SURFACE_SCORES_WALKING: Record<SurfaceType, number> = {
   paved: 0.8,
-  asphalt: 0.7,
-  concrete: 0.7,
-  gravel: 0.8,
-  dirt: 0.8,
-  unpaved: 0.6,
+  unpaved: 0.8,
   unknown: 0.5
 };
 
@@ -239,26 +259,28 @@ export function scoreSurfaceWithParams(
 // ---------------------------------------------------------------------------
 
 /**
- * Road cycling: quiet, open, scenic roads are king. Trails/cycleways are
- * actually undesirable (ped traffic, frequent stops, speed limits).
- * Collectors and quiet roads with good pavement are ideal.
+ * Road cycling: open, continuous collector/tertiary roads and rural roads are ideal.
+ * Neighborhood streets are penalized — lots of cross traffic, narrow, frequent stops.
+ * Trails/cycleways undesirable (ped traffic, frequent stops).
  */
 const CHARACTER_SCORES_ROAD_CYCLING: Record<CorridorType, number> = {
-  "quiet-road": 1.0,
-  collector: 0.7,
+  collector: 0.9,
+  "rural-road": 0.9,
   mixed: 0.5,
+  neighborhood: 0.4,
   arterial: 0.3,
   trail: 0.3,
   path: 0.1
 };
 
 /**
- * Gravel cycling: trails and quiet roads are great. Prefers off-road character.
+ * Gravel cycling: trails and rural roads are great. Prefers off-road character.
  */
 const CHARACTER_SCORES_GRAVEL_CYCLING: Record<CorridorType, number> = {
   trail: 1.0,
-  "quiet-road": 0.8,
+  "rural-road": 0.9,
   mixed: 0.7,
+  neighborhood: 0.5,
   collector: 0.4,
   path: 0.1,
   arterial: 0.1
@@ -267,7 +289,8 @@ const CHARACTER_SCORES_GRAVEL_CYCLING: Record<CorridorType, number> = {
 const CHARACTER_SCORES_RUNNING: Record<CorridorType, number> = {
   trail: 1.0,
   path: 0.9,
-  "quiet-road": 0.7,
+  neighborhood: 0.8,
+  "rural-road": 0.6,
   collector: 0.3,
   arterial: 0.1,
   mixed: 0.2
@@ -276,7 +299,8 @@ const CHARACTER_SCORES_RUNNING: Record<CorridorType, number> = {
 const CHARACTER_SCORES_WALKING: Record<CorridorType, number> = {
   path: 1.0,
   trail: 0.9,
-  "quiet-road": 0.8,
+  neighborhood: 0.9,
+  "rural-road": 0.5,
   collector: 0.3,
   arterial: 0.1,
   mixed: 0.2
@@ -289,19 +313,36 @@ const CHARACTER_SCORES: Record<ActivityType, Record<CorridorType, number>> = {
   walking: CHARACTER_SCORES_WALKING
 };
 
+/** Default crossing decay rates per activity type */
+const DEFAULT_CROSSING_DECAY: Record<ActivityType, number> = {
+  "road-cycling": 0.06,
+  "gravel-cycling": 0.04,
+  running: 0.02,
+  walking: 0.0,
+};
+
 /**
  * Score the character/type preference for a given activity.
  */
 export function scoreCharacter(corridor: Corridor, activityType: ActivityType): number {
-  return scoreCharacterWithParams(corridor, CHARACTER_SCORES[activityType]);
+  return scoreCharacterWithParams(
+    corridor,
+    CHARACTER_SCORES[activityType],
+    DEFAULT_CROSSING_DECAY[activityType]
+  );
 }
 
-/** Parameterized character scoring. */
+/** Parameterized character scoring.
+ *  Base type score is attenuated by crossing density: score * exp(-rate * crossings/km). */
 export function scoreCharacterWithParams(
   corridor: Corridor,
-  characterScores: Record<CorridorType, number>
+  characterScores: Record<CorridorType, number>,
+  crossingDecayRate: number = 0
 ): number {
-  return characterScores[corridor.type] ?? 0.3;
+  const baseScore = characterScores[corridor.type] ?? 0.3;
+  if (crossingDecayRate <= 0) return baseScore;
+  const crossingFactor = Math.exp(-crossingDecayRate * corridor.attributes.crossingDensityPerKm);
+  return baseScore * crossingFactor;
 }
 
 // ---------------------------------------------------------------------------
@@ -339,7 +380,7 @@ export interface ScoringWeights {
 
 /** Default scoring weights per activity type */
 export const DEFAULT_SCORING_WEIGHTS: Record<ActivityType, ScoringWeights> = {
-  "road-cycling": { flow: 0.25, safety: 0.20, surface: 0.25, character: 0.20, scenic: 0.10 },
+  "road-cycling": { flow: 0.30, safety: 0.15, surface: 0.25, character: 0.20, scenic: 0.10 },
   "gravel-cycling": { flow: 0.20, safety: 0.20, surface: 0.25, character: 0.20, scenic: 0.15 },
   running: { flow: 0.20, safety: 0.25, surface: 0.25, character: 0.20, scenic: 0.10 },
   walking: { flow: 0.15, safety: 0.30, surface: 0.20, character: 0.20, scenic: 0.15 }
@@ -376,7 +417,7 @@ export function scoreCorridorWithParams(corridor: Corridor, params: ScoringParam
     params.surfaceScores,
     params.surfaceConfidenceMinFactor
   );
-  const character = scoreCharacterWithParams(corridor, params.characterScores);
+  const character = scoreCharacterWithParams(corridor, params.characterScores, params.crossingDecayRate);
   const scenic = scoreScenicWithParams(corridor, params.scenicBoost);
 
   const w = params.weights;
@@ -420,31 +461,29 @@ export function scoreCorridorsWithParams(
 
 const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
   "road-cycling": {
-    weights: { flow: 0.25, safety: 0.20, surface: 0.25, character: 0.20, scenic: 0.10 },
+    weights: { flow: 0.30, safety: 0.15, surface: 0.25, character: 0.20, scenic: 0.10 },
     flow: {
       lengthLogDenominator: 300,
-      lengthLogNumerator: 10000,
+      lengthLogNumerator: 20000,
       stopDecayRate: 0.2,
       lengthBlend: 0.6
     },
-    safety: { infrastructure: 0.3, separation: 0.3, speedLimit: 0.2, roadClass: 0.2 },
+    safety: { roadClass: 0.30, speedLimit: 0.20, bicycleInfra: 0.20, pedestrianPath: 0.0, separation: 0.20, trafficCalming: 0.10 },
     surfaceScores: {
-      asphalt: 1,
-      concrete: 0.9,
-      paved: 0.9,
-      gravel: 0,
-      dirt: 0,
+      paved: 1,
       unpaved: 0,
       unknown: 0.3
     },
     characterScores: {
-      "quiet-road": 1,
-      collector: 0.7,
+      collector: 0.9,
+      "rural-road": 0.9,
       mixed: 0.5,
+      neighborhood: 0.4,
       arterial: 0.3,
       trail: 0.3,
       path: 0.1
     },
+    crossingDecayRate: 0.06,
     surfaceConfidenceMinFactor: 0.5,
     scenicBoost: 1.0
   },
@@ -456,24 +495,22 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
       stopDecayRate: 0.2,
       lengthBlend: 0.6
     },
-    safety: { infrastructure: 0.3, separation: 0.3, speedLimit: 0.2, roadClass: 0.2 },
+    safety: { roadClass: 0.30, speedLimit: 0.20, bicycleInfra: 0.20, pedestrianPath: 0.0, separation: 0.20, trafficCalming: 0.10 },
     surfaceScores: {
-      gravel: 1,
-      dirt: 0.9,
-      unpaved: 0.8,
-      asphalt: 0.4,
-      concrete: 0.3,
       paved: 0.4,
+      unpaved: 1,
       unknown: 0.4
     },
     characterScores: {
       trail: 0.17,
-      "quiet-road": 0.8,
+      "rural-road": 0.9,
       mixed: 0.7,
+      neighborhood: 0.5,
       collector: 0.4,
       path: 0,
       arterial: 0.1
     },
+    crossingDecayRate: 0.04,
     surfaceConfidenceMinFactor: 0.5,
     scenicBoost: 1.0
   },
@@ -485,24 +522,22 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
       stopDecayRate: 0.2,
       lengthBlend: 0.6
     },
-    safety: { infrastructure: 0.3, separation: 0.3, speedLimit: 0.2, roadClass: 0.2 },
+    safety: { roadClass: 0.25, speedLimit: 0.15, bicycleInfra: 0.05, pedestrianPath: 0.15, separation: 0.20, trafficCalming: 0.20 },
     surfaceScores: {
-      dirt: 0.9,
-      gravel: 0.8,
-      asphalt: 0.7,
       paved: 0.7,
-      concrete: 0.6,
-      unpaved: 0.6,
+      unpaved: 0.9,
       unknown: 0.4
     },
     characterScores: {
       trail: 1,
       path: 0.9,
-      "quiet-road": 0.7,
+      neighborhood: 0.8,
+      "rural-road": 0.6,
       collector: 0.3,
       arterial: 0.1,
       mixed: 0.2
     },
+    crossingDecayRate: 0.02,
     surfaceConfidenceMinFactor: 0.5,
     scenicBoost: 1.0
   },
@@ -514,24 +549,22 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
       stopDecayRate: 0.2,
       lengthBlend: 0.6
     },
-    safety: { infrastructure: 0.3, separation: 0.3, speedLimit: 0.2, roadClass: 0.2 },
+    safety: { roadClass: 0.25, speedLimit: 0.15, bicycleInfra: 0.0, pedestrianPath: 0.20, separation: 0.20, trafficCalming: 0.20 },
     surfaceScores: {
       paved: 0.8,
-      asphalt: 0.7,
-      concrete: 0.7,
-      gravel: 0.8,
-      dirt: 0.8,
-      unpaved: 0.6,
+      unpaved: 0.8,
       unknown: 0.5
     },
     characterScores: {
       path: 1,
       trail: 0.9,
-      "quiet-road": 0.8,
+      neighborhood: 0.9,
+      "rural-road": 0.5,
       collector: 0.3,
       arterial: 0.1,
       mixed: 0.2
     },
+    crossingDecayRate: 0.0,
     surfaceConfidenceMinFactor: 0.5,
     scenicBoost: 1.0
   }
@@ -546,6 +579,7 @@ export function getHardcodedDefaults(activityType: ActivityType): ScoringParams 
     safety: { ...p.safety },
     surfaceScores: { ...p.surfaceScores },
     characterScores: { ...p.characterScores },
+    crossingDecayRate: p.crossingDecayRate,
     surfaceConfidenceMinFactor: p.surfaceConfidenceMinFactor,
     scenicBoost: p.scenicBoost
   };

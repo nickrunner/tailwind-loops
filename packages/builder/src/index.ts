@@ -83,6 +83,7 @@ export {
   fetchOverpassData,
   parseOverpassResponse,
   type OverpassOptions,
+  type OverpassResult,
 } from "./ingestion/overpass/index.js";
 
 // Location-based corridor building
