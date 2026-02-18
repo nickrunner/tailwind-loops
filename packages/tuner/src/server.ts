@@ -15,7 +15,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,6 +27,7 @@ import {
   expandBbox,
   fetchOverpassData,
   parseOverpassResponse,
+  enrichElevation,
 } from "@tailwind-loops/builder";
 import type { OsmNode, OsmWay, BoundingBox } from "@tailwind-loops/builder";
 import {
@@ -48,6 +49,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PUBLIC_DIR = resolve(__dirname, "../public");
 const PBF_PATH = resolve(__dirname, "../../../data/grand-rapids.osm.pbf");
+const SRTM_DIR = resolve(__dirname, "../../../data/michigan/grand-rapids");
 
 const PORT = parseInt(process.env["PORT"] ?? "3456", 10);
 
@@ -60,7 +62,10 @@ const DEFAULT_RADIUS_KM = 5;
 // corridors are always built from a single contiguous graph.
 // ---------------------------------------------------------------------------
 
+import type { Graph } from "@tailwind-loops/types";
+
 let network: CorridorNetwork;
+let currentGraph: Graph;
 let loadingInProgress = false;
 
 // Accumulated raw elements (deduplicated by OSM ID)
@@ -102,9 +107,19 @@ async function rebuildFromAccumulated(): Promise<{
   );
   const graphStart = Date.now();
   const { graph, stats: graphStats } = await buildGraphFromOsm(allElements());
+  currentGraph = graph;
   console.log(
     `  Graph built in ${Date.now() - graphStart}ms: ${graphStats.edgesCount.toLocaleString()} edges`,
   );
+
+  if (existsSync(SRTM_DIR)) {
+    console.log("  Enriching elevation from SRTM...");
+    const elevStart = Date.now();
+    const elevStats = enrichElevation(graph, { dem: { tilesDir: SRTM_DIR } });
+    console.log(
+      `  Elevation enriched in ${Date.now() - elevStart}ms: ${elevStats.nodesEnriched.toLocaleString()} nodes, ${elevStats.edgesEnriched.toLocaleString()} edges`,
+    );
+  }
 
   console.log("  Building corridors...");
   const corridorStart = Date.now();
@@ -390,6 +405,83 @@ function handleLoadLocation(req: IncomingMessage, res: ServerResponse): void {
   });
 }
 
+function handleDebugCorridor(req: IncomingMessage, res: ServerResponse): void {
+  const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
+  const id = url.searchParams.get("id");
+  if (!id) {
+    sendJson(res, { error: "Missing ?id= parameter" }, 400);
+    return;
+  }
+
+  const corridor = network.corridors.get(id);
+  if (!corridor) {
+    // Try matching by name
+    for (const c of network.corridors.values()) {
+      if (c.name === id) {
+        return handleDebugCorridorInner(c, res);
+      }
+    }
+    sendJson(res, { error: `Corridor not found: ${id}` }, 404);
+    return;
+  }
+  handleDebugCorridorInner(corridor, res);
+}
+
+function handleDebugCorridorInner(corridor: CorridorNetwork["corridors"] extends Map<string, infer V> ? V : never, res: ServerResponse): void {
+  const attrs = corridor.attributes;
+  const profile = attrs.elevationProfile;
+
+  // Edge-level elevation details from the current graph
+  const edges = corridor.edgeIds.map((edgeId, idx) => {
+    const edge = currentGraph?.edges.get(edgeId);
+    if (!edge) return { idx, edgeId, missing: true };
+    const fromNode = currentGraph.nodes.get(edge.fromNodeId);
+    const toNode = currentGraph.nodes.get(edge.toNodeId);
+    return {
+      idx,
+      edgeId,
+      name: edge.attributes.name,
+      lengthMeters: Math.round(edge.attributes.lengthMeters),
+      geomPointCount: edge.geometry.length,
+      hasGeometryElevations: !!edge.attributes.geometryElevations,
+      geometryElevationsCount: edge.attributes.geometryElevations?.length ?? 0,
+      fromNodeElev: fromNode?.elevationMeters ?? null,
+      toNodeElev: toNode?.elevationMeters ?? null,
+      fromCoord: fromNode ? { lat: fromNode.coordinate.lat, lng: fromNode.coordinate.lng } : null,
+      toCoord: toNode ? { lat: toNode.coordinate.lat, lng: toNode.coordinate.lng } : null,
+      elevationGain: edge.attributes.elevationGain ?? null,
+      elevationLoss: edge.attributes.elevationLoss ?? null,
+      averageGrade: edge.attributes.averageGrade ?? null,
+    };
+  });
+
+  const edgesWithGeomElev = edges.filter(e => !("missing" in e) && e.hasGeometryElevations).length;
+  const edgesWithNodeElev = edges.filter(e => !("missing" in e) && (e.fromNodeElev != null || e.toNodeElev != null)).length;
+
+  sendJson(res, {
+    id: corridor.id,
+    name: corridor.name,
+    type: corridor.type,
+    edgeCount: corridor.edgeIds.length,
+    lengthMeters: Math.round(attrs.lengthMeters),
+    elevationProfile: profile ?? null,
+    profileLength: profile?.length ?? 0,
+    totalElevationGain: attrs.totalElevationGain,
+    totalElevationLoss: attrs.totalElevationLoss,
+    averageGrade: attrs.averageGrade,
+    maxGrade: attrs.maxGrade,
+    hillinessIndex: attrs.hillinessIndex,
+    geometryPointCount: corridor.geometry.length,
+    summary: {
+      edgesWithGeomElevations: edgesWithGeomElev,
+      edgesWithNodeElevations: edgesWithNodeElev,
+      edgesMissing: edges.filter(e => "missing" in e).length,
+      totalEdges: edges.length,
+    },
+    edges,
+  });
+}
+
 function handleNetworkStats(_req: IncomingMessage, res: ServerResponse): void {
   // Compute bounding box and type breakdown
   let minLat = Infinity, maxLat = -Infinity;
@@ -416,6 +508,25 @@ function handleNetworkStats(_req: IncomingMessage, res: ServerResponse): void {
       lng: (minLng + maxLng) / 2,
     },
   });
+}
+
+function handleDemCoverage(_req: IncomingMessage, res: ServerResponse): void {
+  const tiles: { filename: string; bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number } }[] = [];
+
+  if (existsSync(SRTM_DIR)) {
+    for (const file of readdirSync(SRTM_DIR)) {
+      const match = file.match(/^([NS])(\d{2})([EW])(\d{3})\.hgt$/);
+      if (!match) continue;
+      const lat = parseInt(match[2]!, 10) * (match[1] === "N" ? 1 : -1);
+      const lng = parseInt(match[4]!, 10) * (match[3] === "E" ? 1 : -1);
+      tiles.push({
+        filename: file,
+        bounds: { minLat: lat, maxLat: lat + 1, minLng: lng, maxLng: lng + 1 },
+      });
+    }
+  }
+
+  sendJson(res, { tilesDir: SRTM_DIR, tiles });
 }
 
 function serveStatic(res: ServerResponse, filename: string, contentType: string): void {
@@ -465,6 +576,10 @@ const server = createServer((req, res) => {
     handleSaveAs(req, res);
   } else if (url === "/api/network-stats") {
     handleNetworkStats(req, res);
+  } else if (url === "/api/dem-coverage") {
+    handleDemCoverage(req, res);
+  } else if (url.startsWith("/api/debug-corridor")) {
+    handleDebugCorridor(req, res);
   } else if (url === "/api/load-location" && method === "POST") {
     handleLoadLocation(req, res);
   } else {

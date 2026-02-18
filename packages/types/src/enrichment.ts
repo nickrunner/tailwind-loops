@@ -105,4 +105,6 @@ export interface CorridorConfidence {
   infrastructure: number;
   /** Scenic designation data confidence */
   scenic: number;
+  /** Elevation data confidence (DEM-based, 1.0 when present) */
+  elevation: number;
 }

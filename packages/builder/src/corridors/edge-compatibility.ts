@@ -56,10 +56,11 @@ const SURFACE_GROUPS: Record<SurfaceType, number> = {
 };
 
 // Scoring weights — must sum to 1.0
-const WEIGHT_ROAD_CLASS = 0.45;
-const WEIGHT_SURFACE = 0.25;
-const WEIGHT_INFRASTRUCTURE = 0.20;
+const WEIGHT_ROAD_CLASS = 0.42;
+const WEIGHT_SURFACE = 0.23;
+const WEIGHT_INFRASTRUCTURE = 0.18;
 const WEIGHT_NAME = 0.10;
+const WEIGHT_GRADE = 0.07;
 
 /**
  * Score compatibility between two adjacent edges for corridor clustering.
@@ -96,12 +97,14 @@ export function edgeCompatibility(
   );
   const infraScore = scoreInfrastructure(a.infrastructure, b.infrastructure);
   const nameScore = scoreName(a.name, b.name, opts.allowNameChanges);
+  const gradeScore = scoreGrade(a.averageGrade, b.averageGrade);
 
   return (
     WEIGHT_ROAD_CLASS * roadClassScore +
     WEIGHT_SURFACE * surfaceScore +
     WEIGHT_INFRASTRUCTURE * infraScore +
-    WEIGHT_NAME * nameScore
+    WEIGHT_NAME * nameScore +
+    WEIGHT_GRADE * gradeScore
   );
 }
 
@@ -151,6 +154,20 @@ function scoreInfrastructure(
   if (a.hasTrafficCalming === b.hasTrafficCalming) matches++;
 
   return matches / total;
+}
+
+/** Score grade compatibility (0-1). Within 2% difference = 1.0, linear decay to 0 at 10%. */
+function scoreGrade(
+  a: number | undefined,
+  b: number | undefined
+): number {
+  // Both missing: perfectly compatible. One missing: assume mostly compatible.
+  if (a == null && b == null) return 1.0;
+  if (a == null || b == null) return 0.8;
+  const diff = Math.abs(a - b);
+  if (diff <= 2) return 1.0;
+  if (diff >= 10) return 0.0;
+  return 1.0 - (diff - 2) / 8;
 }
 
 /** Score name compatibility (0-1) */

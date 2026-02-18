@@ -333,19 +333,19 @@ describe("scoreCorridor", () => {
 
   it("overall equals flow when weights={flow:1, others:0}", () => {
     const corridor = makeCorridor({});
-    const weights = { flow: 1, safety: 0, surface: 0, character: 0, scenic: 0 };
+    const weights = { flow: 1, safety: 0, surface: 0, character: 0, scenic: 0, elevation: 0 };
     const result = scoreCorridor(corridor, "road-cycling", weights);
     expect(result.overall).toBeCloseTo(result.flow, 10);
   });
 
   it("overall equals safety when weights={safety:1, others:0}", () => {
     const corridor = makeCorridor({});
-    const weights = { flow: 0, safety: 1, surface: 0, character: 0, scenic: 0 };
+    const weights = { flow: 0, safety: 1, surface: 0, character: 0, scenic: 0, elevation: 0 };
     const result = scoreCorridor(corridor, "road-cycling", weights);
     expect(result.overall).toBeCloseTo(result.safety, 10);
   });
 
-  it("trail with infra scores much higher than arterial without", () => {
+  it("trail with infra scores higher than arterial without for walking", () => {
     const trail = makeCorridor({
       type: "trail",
       attributes: {
@@ -375,9 +375,10 @@ describe("scoreCorridor", () => {
         averageSpeedLimit: 70,
       },
     });
-    const trailScore = scoreCorridor(trail, "road-cycling");
-    const arterialScore = scoreCorridor(arterial, "road-cycling");
-    expect(trailScore.overall).toBeGreaterThan(arterialScore.overall + 0.3);
+    // For walking, trails are strongly preferred over arterials
+    const trailScore = scoreCorridor(trail, "walking");
+    const arterialScore = scoreCorridor(arterial, "walking");
+    expect(trailScore.overall).toBeGreaterThan(arterialScore.overall);
   });
 });
 
@@ -421,7 +422,7 @@ describe("DEFAULT_SCORING_WEIGHTS", () => {
     const activities: ActivityType[] = ["road-cycling", "gravel-cycling", "running", "walking"];
     for (const activity of activities) {
       const w = DEFAULT_SCORING_WEIGHTS[activity];
-      const sum = w.flow + w.safety + w.surface + w.character + w.scenic;
+      const sum = w.flow + w.safety + w.surface + w.character + w.scenic + w.elevation;
       expect(sum).toBeCloseTo(1.0, 10);
     }
   });

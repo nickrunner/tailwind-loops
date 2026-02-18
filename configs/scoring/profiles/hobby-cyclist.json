@@ -7,6 +7,10 @@
     "characterScores": {
       "trail": 0.7,
       "path": 0.5
+    },
+    "elevation": {
+      "hillPreference": "flat",
+      "maxGradePenaltyThreshold": 10
     }
   }
 }

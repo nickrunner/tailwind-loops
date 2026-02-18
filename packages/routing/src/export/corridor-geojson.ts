@@ -204,6 +204,19 @@ function corridorToFeature(
     properties["scoreSurface"] = Math.round(score.surface * 1000) / 1000;
     properties["scoreCharacter"] = Math.round(score.character * 1000) / 1000;
     properties["scoreScenic"] = Math.round(score.scenic * 1000) / 1000;
+    properties["scoreElevation"] = Math.round(score.elevation * 1000) / 1000;
+  }
+
+  // Add elevation attributes when available
+  if (attributes.totalElevationGain != null) {
+    properties["elevationGain"] = Math.round(attributes.totalElevationGain);
+    properties["elevationLoss"] = Math.round(attributes.totalElevationLoss ?? 0);
+    properties["averageGrade"] = Math.round((attributes.averageGrade ?? 0) * 100) / 100;
+    properties["maxGrade"] = Math.round((attributes.maxGrade ?? 0) * 100) / 100;
+    properties["hillinessIndex"] = Math.round((attributes.hillinessIndex ?? 0) * 1000) / 1000;
+  }
+  if (attributes.elevationProfile && attributes.elevationProfile.length > 0) {
+    properties["elevationProfile"] = attributes.elevationProfile.map(v => Math.round(v));
   }
 
   if (includeStyle) {

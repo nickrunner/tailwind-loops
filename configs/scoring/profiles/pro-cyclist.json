@@ -4,11 +4,12 @@
   "extends": "road-cycling",
   "overrides": {
     "weights": {
-      "flow": 0.3333333333333333,
-      "safety": 0.08641975308641976,
-      "surface": 0.19753086419753085,
-      "character": 0.3271604938271605,
-      "scenic": 0.05555555555555555
+      "flow": 0.2844827586206896,
+      "safety": 0.07758620689655171,
+      "surface": 0.17241379310344826,
+      "character": 0.2844827586206896,
+      "scenic": 0.051724137931034475,
+      "elevation": 0.1293103448275862
     },
     "characterScores": {
       "mixed": 0.25,
@@ -16,6 +17,10 @@
       "arterial": 0.13,
       "trail": 0.1,
       "path": 0
+    },
+    "crossingDecayRate": 0.04,
+    "elevation": {
+      "hillPreference": "rolling"
     }
   }
 }

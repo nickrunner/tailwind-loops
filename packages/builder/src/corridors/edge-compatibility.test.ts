@@ -97,12 +97,11 @@ describe("edgeCompatibility", () => {
       expect(score).toBeLessThan(1);
     });
 
-    it("gives partial credit for path → footway (same group)", () => {
+    it("gives full credit for path → footway (same group, same rank)", () => {
       const a = makeEdge({ roadClass: "path" });
       const b = makeEdge({ roadClass: "footway" });
       const score = edgeCompatibility(a, b);
-      expect(score).toBeGreaterThan(0);
-      expect(score).toBeLessThan(1);
+      expect(score).toBeCloseTo(1);
     });
   });
 

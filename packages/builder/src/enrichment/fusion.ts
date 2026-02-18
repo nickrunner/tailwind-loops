@@ -328,7 +328,7 @@ export class NumericFusionStrategy implements FusionStrategy<"scenic"> {
     const mean = values.reduce((s, v) => s + v, 0) / values.length;
     const variance =
       values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
-    const hasConflict = variance > 0.25;
+    const hasConflict = variance > 0.1;
 
     const confidence = Math.min(
       0.95,

@@ -78,6 +78,8 @@ export interface IngestionOptions {
   surfaceProviders?: SurfaceDataProvider[];
   /** Generalized enrichment providers (supersedes surfaceProviders) */
   enrichmentProviders?: import("../enrichment/provider.js").EnrichmentProvider[];
+  /** Elevation enrichment from DEM tiles */
+  elevation?: { dem: import("../elevation/hgt-reader.js").DemConfig };
 }
 
 /** Statistics about surface data quality */
@@ -267,7 +269,7 @@ export function fuseSurfaceObservations(
 
   // Check for conflicts (multiple surfaces with significant votes)
   const significantVotes = [...votes.entries()].filter(
-    ([, v]) => v > maxVotes * 0.5
+    ([, v]) => v > maxVotes * 0.15
   );
   const hasConflict = significantVotes.length > 1;
 
@@ -311,7 +313,13 @@ export async function ingest(options: IngestionOptions): Promise<IngestionResult
     );
   }
 
-  // 3. Enrich with generalized enrichment providers
+  // 3. Enrich with elevation data from DEM
+  if (options.elevation) {
+    const { enrichElevation } = await import("../elevation/index.js");
+    enrichElevation(result.graph, options.elevation);
+  }
+
+  // 4. Enrich with generalized enrichment providers
   if (options.enrichmentProviders && options.enrichmentProviders.length > 0) {
     const { enrichGraph } = await import("../enrichment/pipeline.js");
     const { SurfaceProviderAdapter } = await import("../enrichment/adapter.js");

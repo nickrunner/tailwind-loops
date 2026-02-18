@@ -1,11 +1,12 @@
 {
   "activityType": "road-cycling",
   "weights": {
-    "flow": 0.30000000000000004,
-    "safety": 0.15000000000000002,
-    "surface": 0.25000000000000006,
-    "character": 0.20000000000000004,
-    "scenic": 0.10000000000000002
+    "flow": 0.25,
+    "safety": 0.13,
+    "surface": 0.22,
+    "character": 0.17,
+    "scenic": 0.08,
+    "elevation": 0.15
   },
   "flow": {
     "lengthLogDenominator": 300,
@@ -36,5 +37,14 @@
     "path": 0.1
   },
   "surfaceConfidenceMinFactor": 0.5,
-  "scenicBoost": 1
+  "scenicBoost": 1,
+  "elevation": {
+    "hillPreference": "any",
+    "flatPenaltyRate": 5,
+    "rollingIdealHilliness": 0.3,
+    "rollingWidth": 0.2,
+    "hillyBonusRate": 4,
+    "maxGradePenaltyThreshold": 15,
+    "gradeSensitivity": 8
+  }
 }

@@ -306,6 +306,7 @@ describe("score-colored export", () => {
         surface: 0.9,
         character: 0.7,
         scenic: 0,
+        elevation: 0.5,
       },
     };
     const network = makeNetwork([corridor]);
@@ -332,6 +333,7 @@ describe("score-colored export", () => {
         surface: 0.5,
         character: 0.5,
         scenic: 0,
+        elevation: 0.5,
       },
     };
     const network = makeNetwork([corridor]);

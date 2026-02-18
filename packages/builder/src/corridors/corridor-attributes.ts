@@ -40,6 +40,12 @@ export function aggregateAttributes(
   let trafficCalmingLength = 0;
   const seenNodes = new Set<string>();
   let intersectionCount = 0;
+  let totalElevGain = 0;
+  let totalElevLoss = 0;
+  let weightedAbsGrade = 0;
+  let gradeWeightSum = 0;
+  let maxGrade = 0;
+  let hasElevation = false;
 
   for (let i = 0; i < edgeIds.length; i++) {
     const edge = graph.edges.get(edgeIds[i]!)!;
@@ -102,6 +108,17 @@ export function aggregateAttributes(
       }
     }
 
+    // Elevation metrics
+    if (edge.attributes.elevationGain != null) {
+      hasElevation = true;
+      totalElevGain += edge.attributes.elevationGain;
+      totalElevLoss += edge.attributes.elevationLoss ?? 0;
+      weightedAbsGrade += Math.abs(edge.attributes.averageGrade ?? 0) * len;
+      gradeWeightSum += len;
+      const edgeMaxGrade = edge.attributes.maxGrade ?? 0;
+      if (edgeMaxGrade > maxGrade) maxGrade = edgeMaxGrade;
+    }
+
     // Turns: angle changes > 30 degrees between consecutive edges
     if (i > 0) {
       const prevEdge = graph.edges.get(edgeIds[i - 1]!)!;
@@ -114,6 +131,19 @@ export function aggregateAttributes(
 
   // Aggregate enrichment confidence per dimension
   const confidence = aggregateConfidence(edgeIds, graph, totalLength);
+
+  // Elevation profile + hilliness
+  let elevationProfile: number[] | undefined;
+  let hillinessIndex: number | undefined;
+  if (hasElevation && totalLength > 0) {
+    elevationProfile = buildElevationProfile(edgeIds, graph, 50);
+    // Use direction-independent undulation: (gain + loss) / 2 per km
+    const gainPerKm = (totalElevGain + totalElevLoss) / 2 / (totalLength / 1000);
+    const avgAbsGrade = gradeWeightSum > 0 ? weightedAbsGrade / gradeWeightSum : 0;
+    // Compute grade standard deviation (approx from edge grades)
+    const gradeStdDev = computeGradeStdDev(edgeIds, graph, avgAbsGrade);
+    hillinessIndex = 0.7 * Math.min(1, gainPerKm / 100) + 0.3 * Math.min(1, gradeStdDev / 8);
+  }
 
   return {
     lengthMeters: totalLength,
@@ -132,6 +162,12 @@ export function aggregateAttributes(
     turnsCount,
     trafficCalmingContinuity: totalLength > 0 ? trafficCalmingLength / totalLength : 0,
     scenicScore: totalLength > 0 ? scenicLength / totalLength : 0,
+    totalElevationGain: hasElevation ? totalElevGain : undefined,
+    totalElevationLoss: hasElevation ? totalElevLoss : undefined,
+    averageGrade: hasElevation && gradeWeightSum > 0 ? weightedAbsGrade / gradeWeightSum : undefined,
+    maxGrade: hasElevation ? maxGrade : undefined,
+    elevationProfile,
+    hillinessIndex,
     confidence,
   };
 }
@@ -158,6 +194,8 @@ function aggregateConfidence(
   let infraWeightSum = 0;
   let scenicConfSum = 0;
   let scenicWeightSum = 0;
+  let elevationConfSum = 0;
+  let elevationWeightSum = 0;
 
   for (const edgeId of edgeIds) {
     const edge = graph.edges.get(edgeId)!;
@@ -196,6 +234,13 @@ function aggregateConfidence(
       scenicConfSum += enrichment.scenic.confidence * len;
       scenicWeightSum += len;
     }
+
+    // Elevation: DEM-based, confidence is 1.0 when elevation data present
+    if (edge.attributes.elevationGain != null) {
+      hasSomeEnrichment = true;
+      elevationConfSum += 1.0 * len;
+      elevationWeightSum += len;
+    }
   }
 
   if (!hasSomeEnrichment) return undefined;
@@ -206,6 +251,7 @@ function aggregateConfidence(
     trafficControl: trafficWeightSum > 0 ? trafficConfSum / trafficWeightSum : 0,
     infrastructure: infraWeightSum > 0 ? infraConfSum / infraWeightSum : 0,
     scenic: scenicWeightSum > 0 ? scenicConfSum / scenicWeightSum : 0,
+    elevation: elevationWeightSum > 0 ? elevationConfSum / elevationWeightSum : 0,
   };
 }
 
@@ -422,6 +468,145 @@ export function nameConsistency(
   }
 
   return bestLen / totalLength;
+}
+
+/**
+ * Build an elevation profile by sampling at regular intervals along the corridor.
+ * Walks edge geometries with cumulative distance, interpolating elevations.
+ */
+function buildElevationProfile(
+  edgeIds: string[],
+  graph: Graph,
+  intervalMeters: number
+): number[] {
+  // Collect all (distance, elevation) points along the corridor.
+  // Prefer per-geometry-point elevations stored during DEM enrichment;
+  // fall back to from/to node elevations with linear interpolation.
+  const samples: { dist: number; elev: number }[] = [];
+  let cumulativeDist = 0;
+
+  for (const edgeId of edgeIds) {
+    const edge = graph.edges.get(edgeId)!;
+    const geom = edge.geometry;
+    const geomElevs = edge.attributes.geometryElevations;
+
+    if (geomElevs && geomElevs.length === geom.length) {
+      // Best case: full per-point elevations from DEM
+      for (let i = 0; i < geom.length; i++) {
+        if (i > 0) {
+          cumulativeDist += haversineDistanceSimple(geom[i - 1]!, geom[i]!);
+        }
+        samples.push({ dist: cumulativeDist, elev: geomElevs[i]! });
+      }
+      continue;
+    }
+
+    // Fallback: interpolate from node elevations
+    const fromElev = graph.nodes.get(edge.fromNodeId)?.elevationMeters;
+    const toElev = graph.nodes.get(edge.toNodeId)?.elevationMeters;
+
+    if (fromElev == null && toElev == null) {
+      // No elevation data for this edge — just advance distance
+      for (let i = 1; i < geom.length; i++) {
+        cumulativeDist += haversineDistanceSimple(geom[i - 1]!, geom[i]!);
+      }
+      continue;
+    }
+
+    // Compute cumulative distances within this edge for interpolation
+    const edgeDists: number[] = [0];
+    for (let i = 1; i < geom.length; i++) {
+      edgeDists.push(edgeDists[i - 1]! + haversineDistanceSimple(geom[i - 1]!, geom[i]!));
+    }
+    const edgeLen = edgeDists[edgeDists.length - 1]!;
+
+    const startElev = fromElev ?? toElev!;
+    const endElev = toElev ?? fromElev!;
+
+    for (let i = 0; i < geom.length; i++) {
+      if (i > 0) {
+        cumulativeDist += edgeDists[i]! - edgeDists[i - 1]!;
+      }
+      const t = edgeLen > 0 ? edgeDists[i]! / edgeLen : 0;
+      const elev = startElev + t * (endElev - startElev);
+      samples.push({ dist: cumulativeDist, elev });
+    }
+  }
+
+  if (samples.length < 2) return samples.map((s) => s.elev);
+
+  // Resample at regular intervals
+  const totalDist = samples[samples.length - 1]!.dist;
+  const result: number[] = [];
+  let si = 0;
+
+  for (let d = 0; d <= totalDist; d += intervalMeters) {
+    // Find surrounding samples
+    while (si < samples.length - 1 && samples[si + 1]!.dist < d) {
+      si++;
+    }
+    if (si >= samples.length - 1) {
+      result.push(samples[samples.length - 1]!.elev);
+    } else {
+      const s0 = samples[si]!;
+      const s1 = samples[si + 1]!;
+      const range = s1.dist - s0.dist;
+      if (range === 0) {
+        result.push(s0.elev);
+      } else {
+        const t = (d - s0.dist) / range;
+        result.push(s0.elev + t * (s1.elev - s0.elev));
+      }
+    }
+  }
+
+  // Always include the last point
+  if (result.length === 0 || totalDist - (result.length - 1) * intervalMeters > intervalMeters * 0.1) {
+    result.push(samples[samples.length - 1]!.elev);
+  }
+
+  return result;
+}
+
+/**
+ * Compute the standard deviation of edge grades across the corridor.
+ * Used for the hilliness index calculation.
+ */
+function computeGradeStdDev(
+  edgeIds: string[],
+  graph: Graph,
+  meanAbsGrade: number
+): number {
+  let sumSqDiff = 0;
+  let totalLen = 0;
+
+  for (const edgeId of edgeIds) {
+    const edge = graph.edges.get(edgeId)!;
+    if (edge.attributes.averageGrade == null) continue;
+    const len = edge.attributes.lengthMeters;
+    const diff = Math.abs(edge.attributes.averageGrade) - meanAbsGrade;
+    sumSqDiff += diff * diff * len;
+    totalLen += len;
+  }
+
+  if (totalLen === 0) return 0;
+  return Math.sqrt(sumSqDiff / totalLen);
+}
+
+/** Simple haversine distance for elevation profile building. */
+function haversineDistanceSimple(
+  a: Coordinate,
+  b: Coordinate
+): number {
+  const R = 6371000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLng = Math.sin(dLng / 2);
+  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
 /** Find the key with the greatest accumulated length. */

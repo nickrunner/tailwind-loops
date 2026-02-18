@@ -42,6 +42,10 @@ export interface RouteStats {
   flowScore: number;
   /** Elevation gain in meters (if available) */
   elevationGainMeters?: number;
+  /** Elevation loss in meters (if available) */
+  elevationLossMeters?: number;
+  /** Maximum grade percent across all segments (if available) */
+  maxGradePercent?: number;
 }
 
 /** A complete route */

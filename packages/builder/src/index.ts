@@ -94,6 +94,15 @@ export {
   type LocationBuildOptions,
 } from "./location/index.js";
 
+// Elevation
+export {
+  enrichElevation,
+  type ElevationEnrichmentOptions,
+  type ElevationStats,
+  DemReader,
+  type DemConfig,
+} from "./elevation/index.js";
+
 // Geofabrik
 export {
   type GeofabrikRegion,

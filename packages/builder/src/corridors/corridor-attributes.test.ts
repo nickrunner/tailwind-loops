@@ -543,3 +543,294 @@ describe("douglasPeucker", () => {
     expect(result).toHaveLength(1);
   });
 });
+
+// ─── Elevation aggregation ──────────────────────────────────────────────────
+
+describe("aggregateAttributes - elevation", () => {
+  it("accumulates elevation gain across edges", () => {
+    const graph = makeGraph(
+      [makeNode("a", 0, 0), makeNode("b", 0, 0.001), makeNode("c", 0, 0.002)],
+      [
+        makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+          lengthMeters: 100,
+          elevationGain: 10,
+          elevationLoss: 5,
+          averageGrade: 3,
+          maxGrade: 4,
+        }),
+        makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
+          lengthMeters: 100,
+          elevationGain: 15,
+          elevationLoss: 8,
+          averageGrade: 6,
+          maxGrade: 8,
+        }),
+      ]
+    );
+
+    const attrs = aggregateAttributes(["e1", "e2"], graph);
+    expect(attrs.totalElevationGain).toBe(25);
+  });
+
+  it("accumulates elevation loss across edges", () => {
+    const graph = makeGraph(
+      [makeNode("a", 0, 0), makeNode("b", 0, 0.001), makeNode("c", 0, 0.002)],
+      [
+        makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+          lengthMeters: 100,
+          elevationGain: 10,
+          elevationLoss: 5,
+          averageGrade: 3,
+          maxGrade: 4,
+        }),
+        makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
+          lengthMeters: 100,
+          elevationGain: 15,
+          elevationLoss: 8,
+          averageGrade: 6,
+          maxGrade: 8,
+        }),
+      ]
+    );
+
+    const attrs = aggregateAttributes(["e1", "e2"], graph);
+    expect(attrs.totalElevationLoss).toBe(13);
+  });
+
+  it("computes length-weighted average grade", () => {
+    const graph = makeGraph(
+      [makeNode("a", 0, 0), makeNode("b", 0, 0.001), makeNode("c", 0, 0.002)],
+      [
+        makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+          lengthMeters: 100,
+          elevationGain: 3,
+          elevationLoss: 0,
+          averageGrade: 3,
+          maxGrade: 4,
+        }),
+        makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
+          lengthMeters: 200,
+          elevationGain: 12,
+          elevationLoss: 0,
+          averageGrade: 6,
+          maxGrade: 8,
+        }),
+      ]
+    );
+
+    const attrs = aggregateAttributes(["e1", "e2"], graph);
+    // averageGrade = (|3|*100 + |6|*200) / 300 = 1500/300 = 5
+    expect(attrs.averageGrade).toBeCloseTo(5, 5);
+  });
+
+  it("picks max grade across edges", () => {
+    const graph = makeGraph(
+      [makeNode("a", 0, 0), makeNode("b", 0, 0.001), makeNode("c", 0, 0.002)],
+      [
+        makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+          lengthMeters: 100,
+          elevationGain: 5,
+          elevationLoss: 0,
+          averageGrade: 3,
+          maxGrade: 4,
+        }),
+        makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
+          lengthMeters: 100,
+          elevationGain: 10,
+          elevationLoss: 0,
+          averageGrade: 6,
+          maxGrade: 8,
+        }),
+      ]
+    );
+
+    const attrs = aggregateAttributes(["e1", "e2"], graph);
+    expect(attrs.maxGrade).toBe(8);
+  });
+
+  it("returns undefined elevation fields when no edges have elevation data", () => {
+    const graph = makeGraph(
+      [makeNode("a", 0, 0), makeNode("b", 0, 0.001)],
+      [
+        makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+          lengthMeters: 100,
+          // no elevation fields
+        }),
+      ]
+    );
+
+    const attrs = aggregateAttributes(["e1"], graph);
+    expect(attrs.totalElevationGain).toBeUndefined();
+    expect(attrs.totalElevationLoss).toBeUndefined();
+    expect(attrs.averageGrade).toBeUndefined();
+    expect(attrs.maxGrade).toBeUndefined();
+    expect(attrs.hillinessIndex).toBeUndefined();
+    expect(attrs.elevationProfile).toBeUndefined();
+  });
+
+  it("only edges with elevation data contribute to averages (mixed)", () => {
+    const graph = makeGraph(
+      [makeNode("a", 0, 0), makeNode("b", 0, 0.001), makeNode("c", 0, 0.002)],
+      [
+        makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+          lengthMeters: 100,
+          elevationGain: 10,
+          elevationLoss: 5,
+          averageGrade: 4,
+          maxGrade: 6,
+        }),
+        makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
+          lengthMeters: 200,
+          // no elevation data
+        }),
+      ]
+    );
+
+    const attrs = aggregateAttributes(["e1", "e2"], graph);
+    // Only e1 has elevation data
+    expect(attrs.totalElevationGain).toBe(10);
+    expect(attrs.totalElevationLoss).toBe(5);
+    // averageGrade weighted only by e1's length (100m)
+    expect(attrs.averageGrade).toBeCloseTo(4, 5);
+    expect(attrs.maxGrade).toBe(6);
+  });
+
+  it("flat corridor has hillinessIndex near 0", () => {
+    // Build a corridor of 1km with ~0 gain and 0 grade variance
+    const nodes = [
+      makeNode("a", 0, 0),
+      makeNode("b", 0, 0.001),
+      makeNode("c", 0, 0.002),
+      makeNode("d", 0, 0.003),
+    ];
+    // Set elevationMeters on nodes for profile building
+    nodes[0]!.elevationMeters = 200;
+    nodes[1]!.elevationMeters = 200;
+    nodes[2]!.elevationMeters = 200;
+    nodes[3]!.elevationMeters = 200;
+
+    const graph = makeGraph(nodes, [
+      makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+        lengthMeters: 333,
+        elevationGain: 0,
+        elevationLoss: 0,
+        averageGrade: 0,
+        maxGrade: 0,
+      }),
+      makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
+        lengthMeters: 333,
+        elevationGain: 0,
+        elevationLoss: 0,
+        averageGrade: 0,
+        maxGrade: 0,
+      }),
+      makeEdge("e3", "c", "d", [{ lat: 0, lng: 0.002 }, { lat: 0, lng: 0.003 }], {
+        lengthMeters: 334,
+        elevationGain: 0,
+        elevationLoss: 0,
+        averageGrade: 0,
+        maxGrade: 0,
+      }),
+    ]);
+
+    const attrs = aggregateAttributes(["e1", "e2", "e3"], graph);
+    expect(attrs.hillinessIndex).toBeDefined();
+    expect(attrs.hillinessIndex!).toBeCloseTo(0, 1);
+  });
+
+  it("hilly corridor has hillinessIndex closer to 1", () => {
+    const nodes = [
+      makeNode("a", 0, 0),
+      makeNode("b", 0, 0.001),
+      makeNode("c", 0, 0.002),
+    ];
+    nodes[0]!.elevationMeters = 200;
+    nodes[1]!.elevationMeters = 300;
+    nodes[2]!.elevationMeters = 220;
+
+    const graph = makeGraph(nodes, [
+      makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+        lengthMeters: 500,
+        elevationGain: 100,
+        elevationLoss: 0,
+        averageGrade: 20,
+        maxGrade: 20,
+      }),
+      makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
+        lengthMeters: 500,
+        elevationGain: 0,
+        elevationLoss: 80,
+        averageGrade: -16,
+        maxGrade: 16,
+      }),
+    ]);
+
+    const attrs = aggregateAttributes(["e1", "e2"], graph);
+    expect(attrs.hillinessIndex).toBeDefined();
+    // undulation = (100 + 80) / 2 = 90m over 1km = 90/km
+    // gain component: 0.7 * min(1, 90/100) = 0.63
+    // grade stddev > 0 (edges have different grades) → adds to hilliness
+    expect(attrs.hillinessIndex!).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it("elevation profile is populated when nodes have elevationMeters", () => {
+    const nodes = [
+      makeNode("a", 0, 0),
+      makeNode("b", 0, 0.001),
+      makeNode("c", 0, 0.002),
+    ];
+    nodes[0]!.elevationMeters = 200;
+    nodes[1]!.elevationMeters = 210;
+    nodes[2]!.elevationMeters = 205;
+
+    const graph = makeGraph(nodes, [
+      makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+        lengthMeters: 100,
+        elevationGain: 10,
+        elevationLoss: 0,
+        averageGrade: 10,
+        maxGrade: 10,
+      }),
+      makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
+        lengthMeters: 100,
+        elevationGain: 0,
+        elevationLoss: 5,
+        averageGrade: -5,
+        maxGrade: 5,
+      }),
+    ]);
+
+    const attrs = aggregateAttributes(["e1", "e2"], graph);
+    expect(attrs.elevationProfile).toBeDefined();
+    expect(attrs.elevationProfile!.length).toBeGreaterThan(0);
+    // Profile should start near 200 and contain values in the 200-210 range
+    expect(attrs.elevationProfile![0]).toBeCloseTo(200, 0);
+  });
+
+  it("elevation profile length ≈ totalLength / interval + 1", () => {
+    const nodes = [
+      makeNode("a", 0, 0),
+      makeNode("b", 0, 0.001),
+    ];
+    nodes[0]!.elevationMeters = 200;
+    nodes[1]!.elevationMeters = 210;
+
+    const graph = makeGraph(nodes, [
+      makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
+        lengthMeters: 200,
+        elevationGain: 10,
+        elevationLoss: 0,
+        averageGrade: 5,
+        maxGrade: 5,
+      }),
+    ]);
+
+    const attrs = aggregateAttributes(["e1"], graph);
+    expect(attrs.elevationProfile).toBeDefined();
+    // 200m / 50m interval ≈ 4 + 1 = 5 points (approximately)
+    // The profile uses haversine distance which differs from the set lengthMeters,
+    // so we just check it's in a reasonable range
+    expect(attrs.elevationProfile!.length).toBeGreaterThanOrEqual(2);
+    expect(attrs.elevationProfile!.length).toBeLessThanOrEqual(10);
+  });
+});

@@ -105,6 +105,11 @@
     </div>
 
     <div class="section">
+      <div class="section-header" data-section="elevation">Elevation Params</div>
+      <div class="section-body" id="elevation-section"></div>
+    </div>
+
+    <div class="section">
       <div class="section-header" data-section="confidence">Surface Confidence</div>
       <div class="section-body" id="confidence-section"></div>
     </div>
@@ -126,6 +131,7 @@
 let params = null;
 let debounceTimer = null;
 let corridorLayer = null;
+let highlightGroup = null;
 let map = null;
 let lastGeoJson = null;
 let moveDebounceTimer = null;
@@ -284,6 +290,49 @@ function buildControls() {
     snc, 'scenicBoost', 'Scenic boost', params.scenicBoost ?? 1.0, 0, 3, 0.01
   );
 
+  // Elevation params
+  const elc = document.getElementById('elevation-section');
+  elc.innerHTML = '';
+  sliders.elevation = {};
+  const elevParams = params.elevation || {};
+
+  // Hill preference dropdown
+  const prefRow = document.createElement('div');
+  prefRow.className = 'slider-row';
+  const prefLabel = document.createElement('label');
+  prefLabel.textContent = 'Hill preference';
+  const prefSelect = document.createElement('select');
+  prefSelect.style.cssText = 'flex:1;background:#0f3460;color:#e0e0e0;border:1px solid #533483;padding:2px 4px;border-radius:4px;font-size:12px;';
+  for (const opt of ['any', 'flat', 'rolling', 'hilly']) {
+    const o = document.createElement('option');
+    o.value = opt;
+    o.textContent = opt;
+    if ((elevParams.hillPreference || 'any') === opt) o.selected = true;
+    prefSelect.appendChild(o);
+  }
+  prefSelect.addEventListener('change', scheduleScore);
+  prefRow.append(prefLabel, prefSelect);
+  elc.appendChild(prefRow);
+  sliders.elevation.hillPreference = prefSelect;
+
+  const elevDefs = {
+    flatPenaltyRate: { label: 'Flat penalty rate', min: 0, max: 20, step: 0.5 },
+    rollingIdealHilliness: { label: 'Rolling ideal', min: 0, max: 1, step: 0.01 },
+    rollingWidth: { label: 'Rolling width', min: 0.01, max: 1, step: 0.01 },
+    hillyBonusRate: { label: 'Hilly bonus rate', min: 0, max: 20, step: 0.5 },
+    maxGradePenaltyThreshold: { label: 'Max grade thresh', min: 0, max: 40, step: 1 },
+    gradeSensitivity: { label: 'Grade sensitivity', min: 0, max: 20, step: 0.5 },
+  };
+  for (const [k, def] of Object.entries(elevDefs)) {
+    sliders.elevation[k] = makeSlider(elc, `elevation.${k}`, def.label, elevParams[k] ?? 0, def.min, def.max, def.step);
+  }
+
+  // Crossing decay rate (character param)
+  const cc2 = document.getElementById('character-section');
+  sliders.crossingDecayRate = makeSlider(
+    cc2, 'crossingDecayRate', 'Crossing decay', params.crossingDecayRate ?? 0.04, 0, 0.3, 0.005
+  );
+
   // Surface confidence min factor
   const cfc = document.getElementById('confidence-section');
   cfc.innerHTML = '';
@@ -339,14 +388,27 @@ function readParams() {
     surfaceScores[k] = Number(slider.value);
   }
 
+  // Elevation params
+  const elevation = {
+    hillPreference: sliders.elevation.hillPreference.value,
+    flatPenaltyRate: Number(sliders.elevation.flatPenaltyRate.value),
+    rollingIdealHilliness: Number(sliders.elevation.rollingIdealHilliness.value),
+    rollingWidth: Number(sliders.elevation.rollingWidth.value),
+    hillyBonusRate: Number(sliders.elevation.hillyBonusRate.value),
+    maxGradePenaltyThreshold: Number(sliders.elevation.maxGradePenaltyThreshold.value),
+    gradeSensitivity: Number(sliders.elevation.gradeSensitivity.value),
+  };
+
   return {
     weights,
     flow,
     safety,
     surfaceScores,
     characterScores,
+    crossingDecayRate: Number(sliders.crossingDecayRate.value),
     surfaceConfidenceMinFactor: Number(sliders.confidence.surfaceConfidenceMinFactor.value),
     scenicBoost: Number(sliders.scenic.scenicBoost.value),
+    elevation,
   };
 }
 
@@ -405,6 +467,13 @@ function rerenderFromCache() {
     `Showing ${visibleCount} of ${meta.corridorCount ?? '?'} corridors`;
 }
 
+function clearHighlight() {
+  if (highlightGroup) {
+    map.removeLayer(highlightGroup);
+    highlightGroup = null;
+  }
+}
+
 function renderGeoJson(geojson) {
   if (corridorLayer) {
     map.removeLayer(corridorLayer);
@@ -424,18 +493,54 @@ function renderGeoJson(geojson) {
     }),
     onEachFeature: (feature, layer) => {
       layer.on('click', () => {
+        clearHighlight();
+
+        // Build highlight: thick outline + start/end markers
+        const coords = feature.geometry.coordinates;
+        const latlngs = (feature.geometry.type === 'MultiLineString'
+          ? coords.flat()
+          : coords
+        ).map(c => [c[1], c[0]]);
+
+        const highlight = L.polyline(latlngs, {
+          color: '#00ffff',
+          weight: 7,
+          opacity: 1,
+          interactive: false,
+        });
+
+        const startPt = latlngs[0];
+        const endPt = latlngs[latlngs.length - 1];
+        const startMarker = L.circleMarker(startPt, {
+          radius: 6, color: '#fff', fillColor: '#22cc22', fillOpacity: 1, weight: 2, interactive: false,
+        });
+        const endMarker = L.circleMarker(endPt, {
+          radius: 6, color: '#fff', fillColor: '#cc2222', fillOpacity: 1, weight: 2, interactive: false,
+        });
+
+        highlightGroup = L.layerGroup([highlight, startMarker, endMarker]).addTo(map);
+
+        // Build popup
         const p = feature.properties;
         const barHtml = (score, label) => {
           const pct = Math.round((score ?? 0) * 100);
           const color = scoreToColor(score ?? 0);
           return `<div><span class="bar" style="width:${pct}px;background:${color}"></span>${label}: ${(score ?? 0).toFixed(3)}</div>`;
         };
+        const elevInfo = p.elevationGain != null
+          ? `<div>Elev: +${p.elevationGain}m / -${p.elevationLoss}m | Grade: ${p.averageGrade}% avg, ${p.maxGrade}% max | Hilliness: ${p.hillinessIndex}</div>`
+          : '';
+        const elevChart = p.elevationProfile && p.elevationProfile.length > 1
+          ? `<canvas id="elev-chart" width="310" height="70" style="margin-top:4px;width:310px;height:70px;"></canvas>`
+          : '';
         const html = `
           <div class="score-popup">
             <div class="name">${p.name || p.id}</div>
             <div>Type: ${p.corridorType} | ${p.lengthKm} km</div>
             <div>Road: ${p.roadClass} | Surface: ${p.surface} (${p.surfaceConfidence})</div>
             <div>Infra: ${p.infraContinuity} | Sep: ${p.separationContinuity} | Stops: ${p.stopDensityPerKm}/km | Crossings: ${p.crossingDensityPerKm}/km</div>
+            ${elevInfo}
+            ${elevChart}
             <hr style="margin:4px 0;border-color:#555">
             ${barHtml(p.scoreOverall, 'Overall')}
             ${barHtml(p.scoreFlow, 'Flow')}
@@ -443,10 +548,18 @@ function renderGeoJson(geojson) {
             ${barHtml(p.scoreSurface, 'Surface')}
             ${barHtml(p.scoreCharacter, 'Character')}
             ${barHtml(p.scoreScenic, 'Scenic')}
+            ${barHtml(p.scoreElevation, 'Elevation')}
           </div>
         `;
-        layer.bindPopup(html, { maxWidth: 350 }).openPopup();
+        const popup = layer.bindPopup(html, { maxWidth: 350 }).openPopup();
+
+        // Draw elevation chart after popup is open and canvas is in the DOM
+        if (p.elevationProfile && p.elevationProfile.length > 1) {
+          setTimeout(() => drawElevationChart('elev-chart', p.elevationProfile, p.lengthKm), 10);
+        }
       });
+
+      layer.on('popupclose', clearHighlight);
     },
   }).addTo(map);
 }
@@ -464,6 +577,68 @@ function scoreToColor(score) {
     g = 204;
   }
   return '#' + r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + '22';
+}
+
+function drawElevationChart(canvasId, profile, lengthKm) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.width;
+  const h = canvas.height;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  ctx.scale(dpr, dpr);
+
+  const pad = { top: 12, right: 8, bottom: 16, left: 32 };
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+
+  const minElev = Math.min(...profile);
+  const maxElev = Math.max(...profile);
+  const elevRange = maxElev - minElev || 1;
+  // Add 10% padding to y range
+  const yMin = minElev - elevRange * 0.1;
+  const yMax = maxElev + elevRange * 0.1;
+  const yRange = yMax - yMin;
+
+  const xStep = plotW / (profile.length - 1);
+
+  // Filled area
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top + plotH);
+  for (let i = 0; i < profile.length; i++) {
+    const x = pad.left + i * xStep;
+    const y = pad.top + plotH - ((profile[i] - yMin) / yRange) * plotH;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(pad.left + plotW, pad.top + plotH);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0, 255, 255, 0.15)';
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  for (let i = 0; i < profile.length; i++) {
+    const x = pad.left + i * xStep;
+    const y = pad.top + plotH - ((profile[i] - yMin) / yRange) * plotH;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#00ffff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Y-axis labels
+  ctx.fillStyle = '#999';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(Math.round(maxElev) + 'm', pad.left - 3, pad.top + 8);
+  ctx.fillText(Math.round(minElev) + 'm', pad.left - 3, pad.top + plotH);
+
+  // X-axis label
+  ctx.textAlign = 'center';
+  ctx.fillText((lengthKm ?? 0) + ' km', pad.left + plotW / 2, h - 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -497,6 +672,21 @@ async function init() {
     }
   } catch (e) {
     console.warn('Could not load network stats:', e);
+  }
+
+  // Show DEM tile coverage on map
+  try {
+    const demRes = await fetch('/api/dem-coverage');
+    const dem = await demRes.json();
+    for (const tile of dem.tiles) {
+      const b = tile.bounds;
+      L.rectangle(
+        [[b.minLat, b.minLng], [b.maxLat, b.maxLng]],
+        { color: '#00ffff', weight: 2, fillColor: '#00ffff', fillOpacity: 0.05, interactive: false, dashArray: '6 4' }
+      ).addTo(map).bindTooltip(tile.filename, { permanent: false, direction: 'center' });
+    }
+  } catch (e) {
+    console.warn('Could not load DEM coverage:', e);
   }
 
   // Load profiles list

@@ -22,6 +22,7 @@ export interface CorridorScore {
   surface: number;
   character: number;
   scenic: number;
+  elevation: number;
 }
 
 /** Classification of a corridor based on its character */
@@ -62,6 +63,18 @@ export interface CorridorAttributes {
   trafficCalmingContinuity: number;
   /** Fraction of corridor length with scenic designation (0-1) */
   scenicScore: number;
+  /** Total elevation gain in meters (sum of edge gains) */
+  totalElevationGain?: number;
+  /** Total elevation loss in meters (sum of edge losses) */
+  totalElevationLoss?: number;
+  /** Length-weighted average of absolute edge grades (%) */
+  averageGrade?: number;
+  /** Maximum grade across all edges (%) */
+  maxGrade?: number;
+  /** Sampled elevation profile at ~50m intervals (meters above sea level) */
+  elevationProfile?: number[];
+  /** Hilliness index (0-1): 0 = flat, 1 = very hilly */
+  hillinessIndex?: number;
   /** Per-dimension confidence from multi-source enrichment */
   confidence?: CorridorConfidence;
 }

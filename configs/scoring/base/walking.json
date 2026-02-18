@@ -1,6 +1,6 @@
 {
   "activityType": "walking",
-  "weights": { "flow": 0.15, "safety": 0.30, "surface": 0.20, "character": 0.20, "scenic": 0.15 },
+  "weights": { "flow": 0.13, "safety": 0.27, "surface": 0.18, "character": 0.17, "scenic": 0.13, "elevation": 0.12 },
   "flow": {
     "lengthLogDenominator": 300,
     "lengthLogNumerator": 10000,
@@ -23,5 +23,14 @@
     "mixed": 0.2
   },
   "surfaceConfidenceMinFactor": 0.5,
-  "scenicBoost": 1.0
+  "scenicBoost": 1.0,
+  "elevation": {
+    "hillPreference": "any",
+    "flatPenaltyRate": 5,
+    "rollingIdealHilliness": 0.25,
+    "rollingWidth": 0.25,
+    "hillyBonusRate": 4,
+    "maxGradePenaltyThreshold": 25,
+    "gradeSensitivity": 3
+  }
 }

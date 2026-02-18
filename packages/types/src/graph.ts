@@ -26,6 +26,8 @@ export interface GraphNode {
   hasSignal?: boolean;
   /** Node is a road crossing (highway=crossing or trail-road intersection) */
   isCrossing?: boolean;
+  /** Elevation in meters above sea level (from DEM) */
+  elevationMeters?: number;
 }
 
 /** Road classification from OSM highway tag or equivalent */
@@ -131,6 +133,16 @@ export interface EdgeAttributes {
   roadCrossingCount?: number;
   /** Whether this edge has a scenic designation (OSM scenic=yes) */
   scenicDesignation?: boolean;
+  /** Elevation gain in meters (uphill only, from DEM) */
+  elevationGain?: number;
+  /** Elevation loss in meters (downhill only, positive value, from DEM) */
+  elevationLoss?: number;
+  /** Average grade in % (rise/run), signed */
+  averageGrade?: number;
+  /** Maximum absolute grade in % (steepest segment between consecutive geometry points) */
+  maxGrade?: number;
+  /** Per-geometry-point elevations in meters (from DEM), parallel to GraphEdge.geometry */
+  geometryElevations?: number[];
   /** Multi-source enrichment metadata (per-attribute confidence + observations) */
   enrichment?: EdgeEnrichment;
 }

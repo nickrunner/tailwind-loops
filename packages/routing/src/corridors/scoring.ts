@@ -59,6 +59,7 @@ export interface ScoringParams {
   crossingDecayRate: number;
   surfaceConfidenceMinFactor: number;
   scenicBoost: number;
+  elevation: ElevationParams;
 }
 
 // ---------------------------------------------------------------------------
@@ -366,24 +367,104 @@ export function scoreScenicWithParams(corridor: Corridor, scenicBoost: number): 
 }
 
 // ---------------------------------------------------------------------------
+// Elevation scoring
+// ---------------------------------------------------------------------------
+
+/** Tunable parameters for the elevation scoring dimension */
+export interface ElevationParams {
+  hillPreference: "flat" | "rolling" | "hilly" | "any";
+  /** Exponential decay rate for flat preference */
+  flatPenaltyRate: number;
+  /** Bell curve center for rolling preference */
+  rollingIdealHilliness: number;
+  /** Bell curve width for rolling preference */
+  rollingWidth: number;
+  /** Saturating curve rate for hilly preference */
+  hillyBonusRate: number;
+  /** Max grade % above which all preferences penalize */
+  maxGradePenaltyThreshold: number;
+  /** Activity-specific grade tolerance (higher = more sensitive) */
+  gradeSensitivity: number;
+}
+
+/**
+ * Score elevation suitability for a corridor.
+ *
+ * Uses activity-neutral defaults (any preference).
+ */
+export function scoreElevation(corridor: Corridor): number {
+  return scoreElevationWithParams(corridor, {
+    hillPreference: "any",
+    flatPenaltyRate: 5,
+    rollingIdealHilliness: 0.3,
+    rollingWidth: 0.2,
+    hillyBonusRate: 4,
+    maxGradePenaltyThreshold: 20,
+    gradeSensitivity: 5,
+  });
+}
+
+/** Parameterized elevation scoring. */
+export function scoreElevationWithParams(
+  corridor: Corridor,
+  params: ElevationParams,
+): number {
+  const { hillinessIndex, maxGrade } = corridor.attributes;
+
+  // Missing data: return neutral
+  if (hillinessIndex == null) return 0.5;
+
+  const h = hillinessIndex;
+  let score: number;
+
+  switch (params.hillPreference) {
+    case "flat":
+      score = Math.exp(-params.flatPenaltyRate * h);
+      break;
+    case "rolling":
+      score = Math.exp(
+        -((h - params.rollingIdealHilliness) ** 2) /
+          (2 * params.rollingWidth ** 2),
+      );
+      break;
+    case "hilly":
+      score = 1 - Math.exp(-params.hillyBonusRate * h);
+      break;
+    case "any":
+    default:
+      score = 0.5 + 0.2 * Math.min(1, h / 0.5);
+      break;
+  }
+
+  // Max grade penalty: penalize when maxGrade exceeds threshold
+  if (maxGrade != null && maxGrade > params.maxGradePenaltyThreshold) {
+    const excess = maxGrade - params.maxGradePenaltyThreshold;
+    score *= Math.exp((-params.gradeSensitivity * excess) / 100);
+  }
+
+  return Math.max(0, Math.min(1, score));
+}
+
+// ---------------------------------------------------------------------------
 // Overall scoring
 // ---------------------------------------------------------------------------
 
-/** Weights for combining the five scoring dimensions */
+/** Weights for combining the six scoring dimensions */
 export interface ScoringWeights {
   flow: number;
   safety: number;
   surface: number;
   character: number;
   scenic: number;
+  elevation: number;
 }
 
 /** Default scoring weights per activity type */
 export const DEFAULT_SCORING_WEIGHTS: Record<ActivityType, ScoringWeights> = {
-  "road-cycling": { flow: 0.30, safety: 0.15, surface: 0.25, character: 0.20, scenic: 0.10 },
-  "gravel-cycling": { flow: 0.20, safety: 0.20, surface: 0.25, character: 0.20, scenic: 0.15 },
-  running: { flow: 0.20, safety: 0.25, surface: 0.25, character: 0.20, scenic: 0.10 },
-  walking: { flow: 0.15, safety: 0.30, surface: 0.20, character: 0.20, scenic: 0.15 }
+  "road-cycling": { flow: 0.25, safety: 0.13, surface: 0.22, character: 0.17, scenic: 0.08, elevation: 0.15 },
+  "gravel-cycling": { flow: 0.17, safety: 0.17, surface: 0.22, character: 0.17, scenic: 0.12, elevation: 0.15 },
+  running: { flow: 0.17, safety: 0.22, surface: 0.22, character: 0.17, scenic: 0.07, elevation: 0.15 },
+  walking: { flow: 0.13, safety: 0.27, surface: 0.18, character: 0.17, scenic: 0.13, elevation: 0.12 }
 };
 
 /**
@@ -402,10 +483,11 @@ export function scoreCorridor(
   const surface = scoreSurface(corridor, activityType);
   const character = scoreCharacter(corridor, activityType);
   const scenic = scoreScenic(corridor);
+  const elevation = scoreElevation(corridor);
 
-  const overall = w.flow * flow + w.safety * safety + w.surface * surface + w.character * character + w.scenic * scenic;
+  const overall = w.flow * flow + w.safety * safety + w.surface * surface + w.character * character + w.scenic * scenic + w.elevation * elevation;
 
-  return { overall: Math.max(0, Math.min(1, overall)), flow, safety, surface, character, scenic };
+  return { overall: Math.max(0, Math.min(1, overall)), flow, safety, surface, character, scenic, elevation };
 }
 
 /** Score a single corridor using fully parameterized scoring. */
@@ -419,11 +501,12 @@ export function scoreCorridorWithParams(corridor: Corridor, params: ScoringParam
   );
   const character = scoreCharacterWithParams(corridor, params.characterScores, params.crossingDecayRate);
   const scenic = scoreScenicWithParams(corridor, params.scenicBoost);
+  const elevation = scoreElevationWithParams(corridor, params.elevation);
 
   const w = params.weights;
-  const overall = w.flow * flow + w.safety * safety + w.surface * surface + w.character * character + w.scenic * scenic;
+  const overall = w.flow * flow + w.safety * safety + w.surface * surface + w.character * character + w.scenic * scenic + w.elevation * elevation;
 
-  return { overall: Math.max(0, Math.min(1, overall)), flow, safety, surface, character, scenic };
+  return { overall: Math.max(0, Math.min(1, overall)), flow, safety, surface, character, scenic, elevation };
 }
 
 /**
@@ -461,7 +544,7 @@ export function scoreCorridorsWithParams(
 
 const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
   "road-cycling": {
-    weights: { flow: 0.30, safety: 0.15, surface: 0.25, character: 0.20, scenic: 0.10 },
+    weights: { flow: 0.25, safety: 0.13, surface: 0.22, character: 0.17, scenic: 0.08, elevation: 0.15 },
     flow: {
       lengthLogDenominator: 300,
       lengthLogNumerator: 20000,
@@ -485,10 +568,19 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
     },
     crossingDecayRate: 0.06,
     surfaceConfidenceMinFactor: 0.5,
-    scenicBoost: 1.0
+    scenicBoost: 1.0,
+    elevation: {
+      hillPreference: "any",
+      flatPenaltyRate: 5,
+      rollingIdealHilliness: 0.3,
+      rollingWidth: 0.2,
+      hillyBonusRate: 4,
+      maxGradePenaltyThreshold: 15,
+      gradeSensitivity: 8,
+    }
   },
   "gravel-cycling": {
-    weights: { flow: 0.20, safety: 0.20, surface: 0.25, character: 0.20, scenic: 0.15 },
+    weights: { flow: 0.17, safety: 0.17, surface: 0.22, character: 0.17, scenic: 0.12, elevation: 0.15 },
     flow: {
       lengthLogDenominator: 300,
       lengthLogNumerator: 10000,
@@ -512,10 +604,19 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
     },
     crossingDecayRate: 0.04,
     surfaceConfidenceMinFactor: 0.5,
-    scenicBoost: 1.0
+    scenicBoost: 1.0,
+    elevation: {
+      hillPreference: "any",
+      flatPenaltyRate: 5,
+      rollingIdealHilliness: 0.35,
+      rollingWidth: 0.25,
+      hillyBonusRate: 4,
+      maxGradePenaltyThreshold: 18,
+      gradeSensitivity: 6,
+    }
   },
   running: {
-    weights: { flow: 0.20, safety: 0.25, surface: 0.25, character: 0.20, scenic: 0.10 },
+    weights: { flow: 0.17, safety: 0.22, surface: 0.22, character: 0.17, scenic: 0.07, elevation: 0.15 },
     flow: {
       lengthLogDenominator: 300,
       lengthLogNumerator: 10000,
@@ -539,10 +640,19 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
     },
     crossingDecayRate: 0.02,
     surfaceConfidenceMinFactor: 0.5,
-    scenicBoost: 1.0
+    scenicBoost: 1.0,
+    elevation: {
+      hillPreference: "any",
+      flatPenaltyRate: 5,
+      rollingIdealHilliness: 0.3,
+      rollingWidth: 0.2,
+      hillyBonusRate: 4,
+      maxGradePenaltyThreshold: 20,
+      gradeSensitivity: 5,
+    }
   },
   walking: {
-    weights: { flow: 0.15, safety: 0.30, surface: 0.20, character: 0.20, scenic: 0.15 },
+    weights: { flow: 0.13, safety: 0.27, surface: 0.18, character: 0.17, scenic: 0.13, elevation: 0.12 },
     flow: {
       lengthLogDenominator: 300,
       lengthLogNumerator: 10000,
@@ -566,7 +676,16 @@ const DEFAULT_SCORING_PARAMS: Record<ActivityType, ScoringParams> = {
     },
     crossingDecayRate: 0.0,
     surfaceConfidenceMinFactor: 0.5,
-    scenicBoost: 1.0
+    scenicBoost: 1.0,
+    elevation: {
+      hillPreference: "any",
+      flatPenaltyRate: 5,
+      rollingIdealHilliness: 0.25,
+      rollingWidth: 0.25,
+      hillyBonusRate: 4,
+      maxGradePenaltyThreshold: 25,
+      gradeSensitivity: 3,
+    }
   }
 };
 
@@ -581,7 +700,8 @@ export function getHardcodedDefaults(activityType: ActivityType): ScoringParams 
     characterScores: { ...p.characterScores },
     crossingDecayRate: p.crossingDecayRate,
     surfaceConfidenceMinFactor: p.surfaceConfidenceMinFactor,
-    scenicBoost: p.scenicBoost
+    scenicBoost: p.scenicBoost,
+    elevation: { ...p.elevation },
   };
 }
 
