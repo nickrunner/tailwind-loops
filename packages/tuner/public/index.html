@@ -134,6 +134,7 @@
     <button class="btn" id="reset-btn">Reset Defaults</button>
     <button class="btn" id="save-btn" style="background:#1a4a1a;border-color:#2d7a2d">Save</button>
     <button class="btn" id="save-as-btn" style="background:#1a3a4a;border-color:#2d6a7a">Save as New Profile</button>
+    <button class="btn" id="clear-cache-btn" style="background:#4a1a1a;border-color:#7a2d2d">Clear Network Cache</button>
   </div>
 
   <div id="map"></div>
@@ -146,7 +147,6 @@
 // State
 // ---------------------------------------------------------------------------
 let params = null;
-let debounceTimer = null;
 let corridorLayer = null;
 let connectorLayer = null;
 let highlightGroup = null;
@@ -154,8 +154,6 @@ let routeLayer = null;
 let startMarker = null;
 let map = null;
 let lastGeoJson = null;
-let moveDebounceTimer = null;
-let loadInFlight = false;
 let currentProfile = null; // null = base, string = profile name
 let profileList = [];
 
@@ -436,45 +434,7 @@ function readParams() {
 // Scoring
 // ---------------------------------------------------------------------------
 function scheduleScore() {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(doScore, 150);
-}
-
-async function doScore() {
-  const activity = document.getElementById('activity').value;
-  const currentParams = readParams();
-
-  document.getElementById('status').textContent = 'Scoring...';
-  const start = performance.now();
-
-  try {
-    const res = await fetch('/api/score', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ activityType: activity, params: currentParams }),
-    });
-    const geojson = await res.json();
-    const elapsed = Math.round(performance.now() - start);
-
-    if (geojson.error) {
-      document.getElementById('footer').textContent = `Error: ${geojson.error}`;
-      return;
-    }
-
-    lastGeoJson = geojson;
-    renderGeoJson(geojson);
-    renderConnectors(geojson._connectors);
-
-    const meta = geojson._meta || {};
-    const visibleCount = corridorLayer ? corridorLayer.getLayers().length : meta.corridorCount;
-    const connectorInfo = meta.connectorCount ? ` | ${meta.connectorCount} connectors` : '';
-    document.getElementById('footer').textContent =
-      `Showing ${visibleCount} of ${meta.corridorCount ?? '?'} corridors${connectorInfo} | Scored in ${meta.scoringTimeMs ?? '?'}ms (server) / ${elapsed}ms (round-trip)`;
-    document.getElementById('status').textContent = 'Ready';
-  } catch (err) {
-    document.getElementById('footer').textContent = `Fetch error: ${err.message}`;
-    document.getElementById('status').textContent = 'Error';
-  }
+  // No-op — scoring now happens server-side during route generation
 }
 
 // ---------------------------------------------------------------------------
@@ -730,38 +690,12 @@ document.querySelectorAll('.section-header').forEach(header => {
 // Init
 // ---------------------------------------------------------------------------
 async function init() {
-  // Initialize map (will re-center once we get network stats)
+  // Initialize map
   map = L.map('map').setView([42.96, -85.67], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 19,
   }).addTo(map);
-
-  // Load network stats for centering
-  try {
-    const statsRes = await fetch('/api/network-stats');
-    const stats = await statsRes.json();
-    if (stats.center) {
-      map.setView([stats.center.lat, stats.center.lng], 12);
-    }
-  } catch (e) {
-    console.warn('Could not load network stats:', e);
-  }
-
-  // Show DEM tile coverage on map
-  try {
-    const demRes = await fetch('/api/dem-coverage');
-    const dem = await demRes.json();
-    for (const tile of dem.tiles) {
-      const b = tile.bounds;
-      L.rectangle(
-        [[b.minLat, b.minLng], [b.maxLat, b.maxLng]],
-        { color: '#00ffff', weight: 2, fillColor: '#00ffff', fillOpacity: 0.05, interactive: false, dashArray: '6 4' }
-      ).addTo(map).bindTooltip(tile.filename, { permanent: false, direction: 'center' });
-    }
-  } catch (e) {
-    console.warn('Could not load DEM coverage:', e);
-  }
 
   // Load profiles list
   await loadProfiles();
@@ -816,11 +750,11 @@ async function init() {
     }
   });
 
+  // Wire clear cache button
+  document.getElementById('clear-cache-btn').addEventListener('click', clearNetworkCache);
+
   // Build distance range buttons
   buildDistanceButtons();
-
-  // Auto-load corridors when the map view changes (disabled — route generation handles this)
-  // map.on('moveend', onMoveEnd);
 }
 
 async function loadProfiles() {
@@ -872,7 +806,7 @@ async function loadDefaults() {
 
     params = data;
     buildControls();
-    await doScore();
+    document.getElementById('status').textContent = 'Ready';
   } catch (err) {
     document.getElementById('status').textContent = `Error: ${err.message}`;
   }
@@ -963,55 +897,33 @@ async function saveAsProfile() {
 }
 
 // ---------------------------------------------------------------------------
-// Auto-load corridors on map pan/zoom
+// Cache management
 // ---------------------------------------------------------------------------
 
-function onMoveEnd() {
-  clearTimeout(moveDebounceTimer);
-  moveDebounceTimer = setTimeout(loadCurrentView, 800);
-}
-
-async function loadCurrentView() {
-  if (loadInFlight) return;
-
-  const bounds = map.getBounds();
-  const viewBbox = {
-    minLat: bounds.getSouthWest().lat,
-    maxLat: bounds.getNorthEast().lat,
-    minLng: bounds.getSouthWest().lng,
-    maxLng: bounds.getNorthEast().lng,
-  };
-
-  loadInFlight = true;
-  document.getElementById('status').textContent = 'Fetching corridors...';
+async function clearNetworkCache() {
+  const btn = document.getElementById('clear-cache-btn');
+  btn.textContent = 'Clearing...';
+  btn.disabled = true;
 
   try {
-    const res = await fetch('/api/load-location', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bbox: viewBbox }),
-    });
-    const result = await res.json();
-
-    if (result.error) {
-      document.getElementById('footer').textContent = `Load error: ${result.error}`;
-      document.getElementById('status').textContent = 'Error';
-    } else if (result.cached) {
-      // Area already covered — just re-score existing corridors
-      document.getElementById('status').textContent = 'Ready';
-      await doScore();
+    const res = await fetch('/api/clear-network-cache', { method: 'DELETE' });
+    const data = await res.json();
+    if (data.error) {
+      document.getElementById('footer').textContent = `Cache error: ${data.error}`;
+      btn.textContent = 'Error';
     } else {
-      document.getElementById('footer').textContent =
-        `Loaded ${result.corridorCount} corridors, ${result.connectorCount} connectors (${result.timeMs}ms)`;
-      document.getElementById('status').textContent = 'Ready';
-      await doScore();
+      document.getElementById('footer').textContent = `Cleared ${data.cleared} cached network file(s)`;
+      btn.textContent = 'Cleared!';
     }
   } catch (err) {
-    document.getElementById('footer').textContent = `Load error: ${err.message}`;
-    document.getElementById('status').textContent = 'Error';
+    document.getElementById('footer').textContent = `Cache error: ${err.message}`;
+    btn.textContent = 'Error';
   }
 
-  loadInFlight = false;
+  setTimeout(() => {
+    btn.textContent = 'Clear Network Cache';
+    btn.disabled = false;
+  }, 2000);
 }
 
 // ---------------------------------------------------------------------------
@@ -1098,13 +1010,18 @@ async function generateRoute(btn, targetMiles) {
       onEachFeature: (feature, layer) => {
         const p = feature.properties;
         const label = p.isPrimary ? 'Primary Route' : `Alternative ${p.routeIndex}`;
+        const totalSurfaceDist = (p.surfacePaved || 0) + (p.surfaceUnpaved || 0) + (p.surfaceUnknown || 0);
+        const pctPaved = totalSurfaceDist > 0 ? Math.round((p.surfacePaved || 0) / totalSurfaceDist * 100) : 0;
+        const pctUnpaved = totalSurfaceDist > 0 ? Math.round((p.surfaceUnpaved || 0) / totalSurfaceDist * 100) : 0;
+        const pctUnknown = totalSurfaceDist > 0 ? 100 - pctPaved - pctUnpaved : 0;
         layer.bindPopup(`
           <div class="score-popup">
             <div class="name">${label}</div>
             <div>Distance: ${p.distanceKm} km (${(p.distanceKm * 0.621371).toFixed(1)} mi)</div>
             <div>Score: ${p.score} | Stops: ${p.totalStops} | Flow: ${p.flowScore}</div>
             <div>Segments: ${p.segmentCount}</div>
-            ${p.elevationGain != null ? `<div>Elevation: +${p.elevationGain}m / -${p.elevationLoss}m</div>` : ''}
+            ${p.elevationGain != null ? `<div>Elevation: +${Math.round(p.elevationGain * 3.28084)}ft / -${Math.round(p.elevationLoss * 3.28084)}ft</div>` : ''}
+            <div>Surface: ${pctPaved}% paved, ${pctUnpaved}% unpaved, ${pctUnknown}% unknown</div>
           </div>
         `, { maxWidth: 300 });
       },

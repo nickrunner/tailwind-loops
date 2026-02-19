@@ -75,7 +75,7 @@ export function buildSearchGraph(
   // Corridor types to exclude per activity type
   const EXCLUDED_TYPES: Partial<Record<ActivityType, Set<string>>> = {
     "road-cycling": new Set(["path", "trail"]),
-    "gravel-cycling": new Set(["path"])
+    "gravel-cycling": new Set(["path", "trail"])
   };
   const EXCLUDED_SURFACES: Partial<Record<ActivityType, Set<string>>> = {
     "road-cycling": new Set(["unpaved"])

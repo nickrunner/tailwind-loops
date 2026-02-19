@@ -13,6 +13,7 @@ import type {
   RouteStats,
   CorridorType,
   Coordinate,
+  SurfaceType,
 } from "@tailwind-loops/types";
 import type { SearchCandidate } from "./beam-search.js";
 
@@ -50,7 +51,7 @@ export function candidateToRoute(
       const entryNodeId = candidate.nodePath[i - edgeIds.length]!;
       const reversed = entryNodeId !== corridor.startNodeId;
 
-      segments.push({ kind: "corridor", corridor, reversed });
+      segments.push({ kind: "corridor", corridor, reversed, traversedEdgeIds: edgeIds });
 
       // Build geometry from individual graph edges
       for (const edgeId of edgeIds) {
@@ -89,7 +90,7 @@ export function candidateToRoute(
     }
   }
 
-  const stats = computeStats(segments, candidate);
+  const stats = computeStats(segments, candidate, graph);
   const avgScore =
     candidate.corridorDistance > 0
       ? candidate.weightedScoreSum / candidate.corridorDistance
@@ -120,6 +121,7 @@ function isSameCoord(a: Coordinate, b: Coordinate): boolean {
 function computeStats(
   segments: RouteSegment[],
   candidate: SearchCandidate,
+  graph: Graph,
 ): RouteStats {
   let totalStops = 0;
   let totalInfraLength = 0;
@@ -129,24 +131,37 @@ function computeStats(
   let maxGrade = 0;
   let hasElevation = false;
   const distByType: Record<string, number> = {};
+  const distBySurface: Record<string, number> = { paved: 0, unpaved: 0, unknown: 0 };
 
   for (const seg of segments) {
     if (seg.kind === "corridor") {
       const attrs = seg.corridor.attributes;
-      const len = attrs.lengthMeters;
-      totalCorridorLength += len;
-      totalStops += Math.round(attrs.stopDensityPerKm * (len / 1000));
-      totalInfraLength += attrs.bicycleInfraContinuity * len;
-      const type = seg.corridor.type;
-      distByType[type] = (distByType[type] ?? 0) + len;
-      if (attrs.totalElevationGain != null) {
-        hasElevation = true;
-        elevationGain += attrs.totalElevationGain;
-        elevationLoss += attrs.totalElevationLoss ?? 0;
-        if (attrs.maxGrade != null && attrs.maxGrade > maxGrade) {
-          maxGrade = attrs.maxGrade;
+
+      // Compute actual traversed length from graph edges (may be a subset of corridor)
+      let traversedLength = 0;
+      for (const edgeId of seg.traversedEdgeIds) {
+        const edge = graph.edges.get(edgeId);
+        if (!edge) continue;
+        traversedLength += edge.attributes.lengthMeters;
+        if (edge.attributes.elevationGain != null) {
+          hasElevation = true;
+          elevationGain += edge.attributes.elevationGain;
+          elevationLoss += edge.attributes.elevationLoss ?? 0;
+          if (edge.attributes.maxGrade != null && Math.abs(edge.attributes.maxGrade) > maxGrade) {
+            maxGrade = Math.abs(edge.attributes.maxGrade);
+          }
         }
       }
+
+      totalCorridorLength += traversedLength;
+
+      // Scale density-based stats by actual traversed length
+      totalStops += Math.round(attrs.stopDensityPerKm * (traversedLength / 1000));
+      totalInfraLength += attrs.bicycleInfraContinuity * traversedLength;
+      const type = seg.corridor.type;
+      distByType[type] = (distByType[type] ?? 0) + traversedLength;
+      const surface = attrs.predominantSurface;
+      distBySurface[surface] = (distBySurface[surface] ?? 0) + traversedLength;
     }
   }
 
@@ -161,6 +176,7 @@ function computeStats(
     totalDistanceMeters: candidate.distanceSoFar,
     totalStops,
     distanceByCorridorType: distByType as Record<CorridorType, number>,
+    distanceBySurface: distBySurface as Record<SurfaceType, number>,
     averageInfrastructureContinuity: Math.round(avgInfra * 100) / 100,
     flowScore: Math.round(flowScore * 100) / 100,
   };

@@ -2,9 +2,10 @@
  * Core beam search algorithm for loop route generation.
  *
  * Given a search graph, start node, and target distance, explores the graph
- * to find high-quality loop routes. Uses a two-phase heuristic (outward then
- * return) with score-weighted beam pruning to balance exploration quality
- * with computational cost.
+ * to find high-quality loop routes. Uses a three-phase heuristic (outbound,
+ * explore, return) with score-weighted beam pruning. Direction and quality
+ * are complementary — each phase seeks the best corridors in a phase-appropriate
+ * direction, with BFS handling the final navigation home.
  *
  * The search operates at the individual graph-edge level (not whole corridors),
  * so routes can enter/exit corridors at any intermediate intersection.
@@ -190,6 +191,11 @@ export function generateLoops(
 
   const completed: SearchCandidate[] = [];
 
+  // Track best candidates throughout the search for fallback closing.
+  // If the main search finds 0 routes, we'll try aggressive BFS from these.
+  const MAX_FALLBACK_CANDIDATES = 20;
+  let fallbackCandidates: SearchCandidate[] = [];
+
   console.log(`[beam] Starting: target=${(targetDistance / 1000).toFixed(1)}km, tolerance=${distanceTolerance}, beamWidth=${beamWidth}, nodes=${searchGraph.nodeCoordinates.size}`);
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
@@ -320,14 +326,14 @@ export function generateLoops(
         if (!coord) continue;
 
         const distHome = haversineDistance(coord, startCoord);
-        if (distHome > HOME_ZONE_RADIUS * 2) continue; // Only try for candidates reasonably close
+        if (distHome > 5000) continue; // Only try for candidates within 5km of start
 
         const closing = findClosingPath(
           searchGraph,
           candidate.currentNodeId,
           startNodeId,
           startCoord,
-          HOME_ZONE_RADIUS * 2, // Search within 3km of start
+          Math.max(5000, distHome * 1.3), // Generous radius for road network indirectness
         );
 
         if (closing) {
@@ -370,6 +376,21 @@ export function generateLoops(
       console.log(`[beam] Iter ${iter}: beam=${beam.length}, expanded=${expandedCount}, nextBeam=${nextBeam.length}, completed=${completed.length}, prunedDist=${prunedDistance}, prunedReturn=${prunedReturn}, visited=${skippedVisited}, earlyReturn=${skippedEarlyReturn}, bestDist=${(bestDist / 1000).toFixed(1)}km, closestHome=${closestStr}`);
     }
 
+    // Track best candidates for fallback closing (in case we end with 0 routes).
+    // Keep candidates that have traveled at least 50% of target — these are worth closing.
+    if (completed.length === 0) {
+      const viable = nextBeam.filter((c) => c.distanceSoFar >= targetDistance * 0.5);
+      if (viable.length > 0) {
+        // Score by corridor quality
+        const scored2 = viable.map((c) => ({
+          candidate: c,
+          avgScore: c.corridorDistance > 0 ? c.weightedScoreSum / c.corridorDistance : 0,
+        }));
+        scored2.sort((a, b) => b.avgScore - a.avgScore);
+        fallbackCandidates = scored2.slice(0, MAX_FALLBACK_CANDIDATES).map((s) => s.candidate);
+      }
+    }
+
     // Score and prune to beam width
     beam = pruneBeam(
       nextBeam,
@@ -380,6 +401,55 @@ export function generateLoops(
       preferredDirection,
       turnFrequency,
     );
+  }
+
+  // --- Fallback closing ---
+  // If we found 0 routes, aggressively try BFS from the best candidates
+  // we tracked. Better to return a route that overshoots than nothing at all.
+  if (completed.length === 0 && fallbackCandidates.length > 0) {
+    console.log(`[beam] 0 routes found — attempting fallback BFS from ${fallbackCandidates.length} candidates`);
+
+    for (const candidate of fallbackCandidates) {
+      if (completed.length >= maxAlternatives) break;
+
+      const coord = searchGraph.nodeCoordinates.get(candidate.currentNodeId);
+      if (!coord) continue;
+
+      const distHome = haversineDistance(coord, startCoord);
+      // Allow BFS to explore a generous radius: candidate's distance to start
+      // plus buffer for road network indirectness. No less than 5km.
+      const fallbackRadius = Math.max(5000, distHome * 1.5);
+
+      const closing = findClosingPath(
+        searchGraph,
+        candidate.currentNodeId,
+        startNodeId,
+        startCoord,
+        fallbackRadius,
+        200, // generous edge limit
+      );
+
+      if (closing) {
+        const closedCandidate: SearchCandidate = {
+          edgePath: [...candidate.edgePath, ...closing.edgeIds],
+          corridorPath: [...candidate.corridorPath, ...closing.corridorIds],
+          nodePath: [...candidate.nodePath, ...closing.nodeIds],
+          currentNodeId: startNodeId,
+          distanceSoFar: candidate.distanceSoFar + closing.distance,
+          weightedScoreSum: candidate.weightedScoreSum,
+          corridorDistance: candidate.corridorDistance,
+          connectorPenaltySum: candidate.connectorPenaltySum,
+          visitedEdges: new Set([...candidate.visitedEdges, ...closing.edgeIds]),
+          lastEdgeScore: candidate.lastEdgeScore,
+        };
+        completed.push(closedCandidate);
+        console.log(`[beam] Fallback closed: ${(closedCandidate.distanceSoFar / 1000).toFixed(1)}km (BFS from ${(distHome / 1000).toFixed(1)}km away, closing path ${(closing.distance / 1000).toFixed(1)}km)`);
+      }
+    }
+
+    if (completed.length === 0) {
+      console.log(`[beam] Fallback BFS failed — no path home from any candidate`);
+    }
   }
 
   // Score and sort completed routes
@@ -404,10 +474,10 @@ export function generateLoops(
 /**
  * Score an active candidate for beam pruning.
  *
- * Weights shift dynamically based on budget consumed:
- * - Outward (0-40%):  corridor quality dominates
- * - Transition (40-60%): balanced
- * - Return (60-100%): getting back to start dominates
+ * Three-phase strategy — direction and quality are complementary, not competing:
+ * - Outbound (0-33%):  best corridors heading AWAY from start
+ * - Explore  (33-66%): best corridors, no directional bias — run free
+ * - Return   (66-100%): best corridors heading TOWARD start (BFS handles navigation)
  */
 function scoreActive(
   candidate: SearchCandidate,
@@ -424,13 +494,14 @@ function scoreActive(
 
   const budgetFraction = candidate.distanceSoFar / targetDistance;
   const currentCoord = searchGraph.nodeCoordinates.get(candidate.currentNodeId);
-  let directionalScore = 0.5;
+  let directionalScore = 0.5; // neutral default
 
   if (currentCoord) {
     const distToStart = haversineDistance(currentCoord, startCoord);
-    if (budgetFraction < 0.5) {
-      // Outward phase: reward moving away from start.
-      // Scale relative to how far we COULD be given distance traveled.
+
+    if (budgetFraction < 0.33) {
+      // Phase 1 — Outbound: reward moving away from start.
+      // Find the best corridors in the outward direction.
       const expectedOutward = Math.max(1000, candidate.distanceSoFar * 0.4);
       directionalScore = Math.min(1, distToStart / expectedOutward);
       if (preferredDirection != null && distToStart > 100) {
@@ -439,33 +510,29 @@ function scoreActive(
         const normalizedDiff = Math.min(angleDiff, 360 - angleDiff) / 180;
         directionalScore *= 1 - normalizedDiff * 0.5;
       }
+    } else if (budgetFraction < 0.66) {
+      // Phase 2 — Explore: no directional bias, just run free.
+      // All candidates get the same directional score — only quality matters.
+      directionalScore = 0.5;
     } else {
-      // Return phase: reward getting closer to start.
-      // remaining = how much travel budget is left
+      // Phase 3 — Return: reward getting closer to start.
+      // Gentle pressure — BFS handles actual navigation home.
       const remaining = targetDistance - candidate.distanceSoFar;
       if (remaining > 0) {
-        // ratio = how far from start vs how much budget remains
-        // ratio 0 = at start, ratio 1 = just barely reachable in straight line
         const ratio = distToStart / remaining;
-        // Exponential decay gives smooth gradient even for far-away candidates.
-        // ratio=0 → 1.0, ratio=0.5 → 0.37, ratio=1.0 → 0.14
-        directionalScore = Math.exp(-ratio * 2);
+        // Gentler than before: ratio=0 → 1.0, ratio=0.5 → 0.61, ratio=1.0 → 0.37
+        directionalScore = Math.exp(-ratio);
       } else {
-        // Over budget: smooth gradient toward start.
         directionalScore = Math.max(0, 1 - distToStart / HOME_ZONE_RADIUS);
       }
     }
   }
 
-  // Dynamic weights: quality always dominates.
-  // The beam search's job is to explore high-quality corridors.
-  // BFS handles navigating home — direction is just gentle guidance to keep
-  // candidates spread outward and not drifting back toward start too early.
-  // At 0% budget: quality=0.65, direction=0.10
-  // At 100% budget: quality=0.55, direction=0.20
-  const returnUrgency = Math.max(0, Math.min(1, (budgetFraction - 0.5) / 0.5));
-  const qualityWeight = 0.65 - 0.10 * returnUrgency;
-  const directionWeight = 0.10 + 0.10 * returnUrgency;
+  // Quality is always the dominant signal. Direction is a complementary nudge
+  // that steers candidates in the right phase-appropriate direction without
+  // sacrificing corridor quality.
+  const qualityWeight = 0.65;
+  const directionWeight = 0.10;
   const noveltyWeight = 0.05;
 
   const edgeCount = candidate.edgePath.length;
@@ -540,11 +607,12 @@ function scoreCompleted(
 }
 
 /**
- * Prune the beam with phase-aware strategy.
+ * Prune the beam with three-phase strategy.
  *
- * - Outward phase (<50% budget): spatial bucketing for geographic diversity
- * - Return phase (≥50% budget): prioritize candidates closest to start,
- *   with increasing homebound fraction as budget is consumed
+ * - Outbound  (<33% budget): spatial bucketing for geographic diversity
+ * - Explore   (33-66% budget): pure score-based — run free
+ * - Return    (≥66% budget): homebound reservation ramps up,
+ *   BFS handles actual navigation home
  */
 function pruneBeam(
   candidates: SearchCandidate[],
@@ -581,9 +649,9 @@ function pruneBeam(
 
   // Homebound reservation: mild preference for candidates heading home.
   // BFS handles actual navigation, this just ensures some diversity toward start.
-  // Kicks in at 65% budget, maxes at 20% of beam at 95% budget.
-  const homeboundFraction = budgetUsed < 0.65 ? 0
-    : Math.min(0.20, (budgetUsed - 0.65) / 0.30 * 0.20);
+  // Kicks in at 80% budget, maxes at 20% of beam at 100% budget.
+  const homeboundFraction = budgetUsed < 0.80 ? 0
+    : Math.min(0.20, (budgetUsed - 0.80) / 0.20 * 0.20);
   const homeboundSlots = Math.floor(beamWidth * homeboundFraction);
 
   if (homeboundSlots > 0) {
@@ -605,11 +673,11 @@ function pruneBeam(
     }
   }
 
-  // Remaining slots: spatial bucketing in outward phase, score-based in return phase
+  // Remaining slots: spatial bucketing in outbound phase, score-based otherwise
   const remainingSlots = beamWidth - result.length;
 
-  if (budgetUsed < 0.5) {
-    // Outward phase: spatial bucketing for diversity
+  if (budgetUsed < 0.33) {
+    // Outbound phase: spatial bucketing for diversity in all directions
     const NUM_SECTORS = 8;
     const sectors: (typeof scored)[] = Array.from({ length: NUM_SECTORS }, () => []);
     for (const s of scored) {
@@ -629,7 +697,7 @@ function pruneBeam(
     }
   }
 
-  // Fill remaining by global score
+  // Fill remaining by global score (explore + return phases, and leftover outbound slots)
   if (result.length < beamWidth) {
     scored.sort((a, b) => b.score - a.score);
     for (const s of scored) {

@@ -6,7 +6,7 @@
  * needed to link corridors together).
  */
 
-import type { Coordinate, GraphEdge } from "./graph.js";
+import type { Coordinate, GraphEdge, SurfaceType } from "./graph.js";
 import type { Corridor, CorridorType } from "./corridor.js";
 
 /** A segment that is a full corridor */
@@ -15,6 +15,8 @@ export interface CorridorSegment {
   corridor: Corridor;
   /** Direction: are we traversing start->end or end->start? */
   reversed: boolean;
+  /** Graph edge IDs actually traversed (may be a subset of corridor.edgeIds) */
+  traversedEdgeIds: string[];
 }
 
 /** A segment that is a connecting edge (not part of a corridor) */
@@ -36,6 +38,8 @@ export interface RouteStats {
   totalStops: number;
   /** Breakdown by corridor type */
   distanceByCorridorType: Record<CorridorType, number>;
+  /** Breakdown by surface type (paved/unpaved/unknown) in meters */
+  distanceBySurface: Record<SurfaceType, number>;
   /** Average infrastructure continuity (0-1) */
   averageInfrastructureContinuity: number;
   /** "Flow score" - how continuous/uninterrupted is the route? (0-1) */
