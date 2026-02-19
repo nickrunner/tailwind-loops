@@ -25,7 +25,7 @@ describe("tileForPoint", () => {
   it("nearby points in the same tile get the same coordinates", () => {
     // Both within row=floor(42.92/S), col=floor(-85.68/S)
     const a = tileForPoint(42.92, -85.68);
-    const b = tileForPoint(42.92 + S * 0.3, -85.68 + S * 0.3);
+    const b = tileForPoint(42.92 + S * 0.1, -85.68 + S * 0.1);
     expect(a).toEqual(b);
   });
 

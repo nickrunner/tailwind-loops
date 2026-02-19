@@ -6,6 +6,7 @@
     "start": "tsx src/server.ts"
   },
   "dependencies": {
+    "@tailwind-loops/types": "workspace:*",
     "@tailwind-loops/routing": "workspace:*",
     "@tailwind-loops/builder": "workspace:*"
   },

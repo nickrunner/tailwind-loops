@@ -13,7 +13,9 @@ const PBF_PATH = resolve(__dirname, "../../../data/grand-rapids.osm.pbf");
 async function main() {
   console.log("Ingesting Grand Rapids...");
   const { graph, stats: ingestStats } = await ingestOsm({ pbfPath: PBF_PATH });
-  console.log(`Graph: ${ingestStats.nodesCount.toLocaleString()} nodes, ${ingestStats.edgesCount.toLocaleString()} edges`);
+  console.log(
+    `Graph: ${ingestStats.nodesCount.toLocaleString()} nodes, ${ingestStats.edgesCount.toLocaleString()} edges`
+  );
   console.log("");
 
   console.log("Building corridors...");
@@ -44,11 +46,17 @@ async function main() {
   // Sample named corridors
   console.log("=== Sample Corridors (>1km, named) ===");
   const sorted = [...network.corridors.values()]
-    .filter(c => c.name && c.attributes.lengthMeters > 1000)
+    .filter((c) => c.name && c.attributes.lengthMeters > 1000)
     .sort((a, b) => b.attributes.lengthMeters - a.attributes.lengthMeters);
   for (const c of sorted.slice(0, 15)) {
     console.log(`  ${c.name} (${c.type})`);
-    console.log(`    ${(c.attributes.lengthMeters / 1000).toFixed(1)}km | ${c.attributes.predominantSurface} | ${c.edgeIds.length} edges | infra: ${(c.attributes.infrastructureContinuity * 100).toFixed(0)}%`);
+    console.log(
+      `    ${(c.attributes.lengthMeters / 1000).toFixed(1)}km | ${
+        c.attributes.predominantSurface
+      } | ${c.edgeIds.length} edges | infra: ${(c.attributes.bicycleInfraContinuity * 100).toFixed(
+        0
+      )}%`
+    );
   }
   console.log("");
 
@@ -66,4 +74,7 @@ async function main() {
   console.log(`Max connections: ${maxAdj}`);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

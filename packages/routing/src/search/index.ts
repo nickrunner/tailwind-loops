@@ -1,66 +1,82 @@
 /**
  * Route search module.
  *
- * Responsible for finding routes that match the user's intent. The search
- * operates primarily on corridors (for flow) but falls back to the raw
- * graph for connections.
- *
- * Intent -> Policy -> Search on Corridors -> Route
+ * Generates loop routes by beam-searching the corridor network.
+ * The caller scores corridors first; this module operates on scored corridors.
  */
 
-import type { Graph, CorridorNetwork, ActivityIntent, RoutingPolicy, Route, RouteAlternatives } from "@tailwind-loops/types";
+import type {
+  Graph,
+  CorridorNetwork,
+  ActivityType,
+  LoopSearchParams,
+  RouteAlternatives,
+} from "@tailwind-loops/types";
+import { buildSearchGraph } from "./search-graph.js";
+import { snapToNode } from "./snap.js";
+import { generateLoops } from "./beam-search.js";
+import { candidateToRoute } from "./route-builder.js";
 
-/** Options for route search */
-export interface SearchOptions {
-  /** Maximum number of alternatives to return */
-  maxAlternatives?: number;
-  /** Time limit for search in milliseconds */
-  timeLimitMs?: number;
-  /** Prefer corridors even if slightly longer */
-  preferCorridors?: boolean;
-}
-
-/** Default search options */
-export const DEFAULT_SEARCH_OPTIONS: Required<SearchOptions> = {
-  maxAlternatives: 3,
-  timeLimitMs: 5000,
-  preferCorridors: true,
-};
+export { buildSearchGraph, type SearchGraph, type SearchEdge } from "./search-graph.js";
+export { snapToNode, haversineDistance, bearing, type SnapResult } from "./snap.js";
+export { generateLoops, type SearchCandidate, type BeamSearchOptions } from "./beam-search.js";
+export { candidateToRoute } from "./route-builder.js";
 
 /**
- * Find a route matching the given intent.
+ * Generate loop routes from a scored corridor network.
  *
- * @param intent - The user's intent
- * @param policy - The routing policy (derived from intent)
- * @param corridorNetwork - The corridor network to search
- * @param graph - The underlying graph (for connections)
- * @param options - Search options
- * @returns The best route(s) matching the intent
+ * @param network - Corridor network with scores already populated
+ * @param graph - Underlying street graph (for node coordinates and connector edges)
+ * @param activityType - Activity type (determines which corridor scores to use)
+ * @param params - Loop search parameters (start point, target distance, etc.)
+ * @returns Route alternatives (primary + alternatives), or null if no routes found
  */
-export async function routeWithIntent(
-  _intent: ActivityIntent,
-  _policy: RoutingPolicy,
-  _corridorNetwork: CorridorNetwork,
-  _graph: Graph,
-  _options?: SearchOptions
-): Promise<RouteAlternatives> {
-  // TODO: Implement route search
-  // 1. Snap start/end to corridor network or graph
-  // 2. Run corridor-aware search (modified A* or similar)
-  // 3. Score candidates against policy
-  // 4. Return best route(s)
-  throw new Error("Not implemented: routeWithIntent");
-}
+export function generateLoopRoutes(
+  network: CorridorNetwork,
+  graph: Graph,
+  activityType: ActivityType,
+  params: LoopSearchParams,
+): RouteAlternatives | null {
+  const t0 = performance.now();
 
-/**
- * Score a route against a policy.
- *
- * @param route - The route to score
- * @param policy - The routing policy
- * @returns A score (higher = better match)
- */
-export function scoreRoute(_route: Route, _policy: RoutingPolicy): number {
-  // TODO: Implement scoring logic
-  // Combine corridor weights, flow, stops, infrastructure
-  throw new Error("Not implemented: scoreRoute");
+  // 1. Build search graph from scored network
+  const searchGraph = buildSearchGraph(network, graph, activityType);
+  console.log(`[route] Search graph: ${searchGraph.nodeCoordinates.size} nodes, ${searchGraph.adjacency.size} adjacency entries (${(performance.now() - t0).toFixed(0)}ms)`);
+
+  // 2. Snap start coordinate to nearest node
+  const snap = snapToNode(params.startCoordinate, searchGraph);
+  if (!snap) {
+    console.log(`[route] Failed to snap start coordinate to any node`);
+    return null;
+  }
+  console.log(`[route] Snapped to node ${snap.nodeId} (${snap.snapDistance.toFixed(0)}m away)`);
+
+  // 3. Run beam search
+  // Randomize preferred direction if not explicitly set — produces varied routes each run
+  const preferredDirection = params.preferredDirection ?? Math.random() * 360;
+  console.log(`[route] Preferred direction: ${preferredDirection.toFixed(0)}°`);
+  const t1 = performance.now();
+  const candidates = generateLoops(searchGraph, snap.nodeId, params.targetDistanceMeters, {
+    distanceTolerance: params.distanceTolerance,
+    preferredDirection,
+    turnFrequency: params.turnFrequency,
+    maxAlternatives: params.maxAlternatives,
+  });
+  console.log(`[route] Beam search: ${candidates.length} routes found (${(performance.now() - t1).toFixed(0)}ms)`);
+
+  if (candidates.length === 0) return null;
+
+  // 4. Convert candidates to Route objects
+  const routes = candidates.map((c, i) => candidateToRoute(c, network, graph, i));
+
+  for (const route of routes) {
+    console.log(`[route]   ${route.id}: ${(route.stats.totalDistanceMeters / 1609.34).toFixed(1)}mi, score=${route.score.toFixed(3)}, ${route.segments.length} segments`);
+  }
+
+  console.log(`[route] Total: ${(performance.now() - t0).toFixed(0)}ms`);
+
+  return {
+    primary: routes[0]!,
+    alternatives: routes.slice(1),
+  };
 }

@@ -224,6 +224,31 @@ export async function buildCorridors(
     connector.corridorIds = adjIds.filter((id) => corridors.has(id));
   }
 
+  // Step 5b: Sanitize connectors — only keep connectors that bridge 2+ distinct corridors.
+  // Connectors that loop within neighborhoods or dead-end into a single corridor
+  // don't serve routing and create noise.
+  const removedConnectorIds = new Set<string>();
+  for (const connector of connectors.values()) {
+    const uniqueCorridorIds = new Set(connector.corridorIds);
+    if (uniqueCorridorIds.size < 2) {
+      removedConnectorIds.add(connector.id);
+      connectors.delete(connector.id);
+      adjacency.delete(connector.id);
+    }
+  }
+
+  // Clean up adjacency lists: remove references to deleted connectors
+  if (removedConnectorIds.size > 0) {
+    for (const [entityId, adjList] of adjacency) {
+      const filtered = adjList.filter((id) => !removedConnectorIds.has(id));
+      if (filtered.length > 0) {
+        adjacency.set(entityId, filtered);
+      } else {
+        adjacency.delete(entityId);
+      }
+    }
+  }
+
   // Step 6: Compute stats
   let totalLength = 0;
   for (const c of corridors.values()) {

@@ -5,11 +5,9 @@
  * that lets you tweak scoring parameters and see the results on a map
  * in real time.
  *
- * Data sources (tried in order):
- * 1. Local PBF file (if data/grand-rapids.osm.pbf exists)
- * 2. Overpass API for a default location (Grand Rapids, MI)
- *
- * The UI supports loading corridors for the current map view via Overpass.
+ * Fetches initial data from the Overpass API for a default location
+ * (Grand Rapids, MI). The UI supports loading corridors for the current
+ * map view via Overpass.
  *
  * Usage: pnpm start
  */
@@ -22,7 +20,6 @@ import { fileURLToPath } from "node:url";
 import {
   buildCorridors,
   buildGraphFromOsm,
-  parseOsmPbf,
   bboxFromCenter,
   expandBbox,
   fetchOverpassData,
@@ -38,17 +35,18 @@ import {
   saveProfileConfig,
   scoreCorridorWithParams,
   corridorNetworkToGeoJson,
+  generateLoopRoutes,
 } from "@tailwind-loops/routing";
 import type {
   ScoringParams,
   ActivityType,
   CorridorNetwork,
+  LoopSearchParams,
 } from "@tailwind-loops/routing";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PUBLIC_DIR = resolve(__dirname, "../public");
-const PBF_PATH = resolve(__dirname, "../../../data/grand-rapids.osm.pbf");
 const SRTM_DIR = resolve(__dirname, "../../../data/michigan/grand-rapids");
 
 const PORT = parseInt(process.env["PORT"] ?? "3456", 10);
@@ -135,45 +133,10 @@ async function rebuildFromAccumulated(): Promise<{
   };
 }
 
-/** Infer covered bbox from accumulated node coordinates. */
-function inferCoveredBbox(): BoundingBox | null {
-  if (accumulatedNodes.size === 0) return null;
-  let minLat = Infinity,
-    maxLat = -Infinity;
-  let minLng = Infinity,
-    maxLng = -Infinity;
-  for (const node of accumulatedNodes.values()) {
-    if (node.lat < minLat) minLat = node.lat;
-    if (node.lat > maxLat) maxLat = node.lat;
-    if (node.lon < minLng) minLng = node.lon;
-    if (node.lon > maxLng) maxLng = node.lon;
-  }
-  return { minLat, maxLat, minLng, maxLng };
-}
-
-/** Load data at startup: try PBF first, fall back to Overpass. */
+/** Load data at startup via Overpass API for the default location. */
 async function loadData(): Promise<void> {
-  if (existsSync(PBF_PATH)) {
-    console.log("Ingesting OSM data from PBF...");
-    const elements = parseOsmPbf(PBF_PATH);
-    for await (const el of elements) {
-      if (el.type === "node") accumulatedNodes.set(el.id, el);
-      else accumulatedWays.set(el.id, el);
-    }
-    console.log(
-      `  Collected ${accumulatedNodes.size.toLocaleString()} nodes, ${accumulatedWays.size.toLocaleString()} ways`,
-    );
-
-    console.log("Building corridors...");
-    const result = await rebuildFromAccumulated();
-    coveredBbox = inferCoveredBbox();
-    console.log(
-      `  ${result.corridorCount.toLocaleString()} corridors, ${result.connectorCount.toLocaleString()} connectors`,
-    );
-  } else {
-    console.log("No PBF file found, using Overpass API...");
-    await fetchAndMerge(bboxFromCenter(DEFAULT_CENTER, DEFAULT_RADIUS_KM));
-  }
+  console.log("Fetching initial data from Overpass API...");
+  await fetchAndMerge(bboxFromCenter(DEFAULT_CENTER, DEFAULT_RADIUS_KM));
 }
 
 function fmtBbox(bbox: BoundingBox): string {
@@ -267,6 +230,7 @@ function handleProfiles(_req: IncomingMessage, res: ServerResponse): void {
 }
 
 function handleScore(req: IncomingMessage, res: ServerResponse): void {
+  if (!network) { sendJson(res, { features: [], _meta: { corridorCount: 0, scoringTimeMs: 0 } }); return; }
   let body = "";
   req.on("data", (chunk: Buffer) => {
     body += chunk.toString();
@@ -295,11 +259,25 @@ function handleScore(req: IncomingMessage, res: ServerResponse): void {
         scoreActivity: activityType,
       });
 
+      // Build connector GeoJSON separately for independent layer toggling
+      const connectorGeojson = corridorNetworkToGeoJson(network, {
+        includeConnectors: true,
+        scoreActivity: activityType,
+      });
+      const connectorFeatures = connectorGeojson.features.filter(
+        (f: any) => f.properties?.featureType === "connector",
+      );
+
       sendJson(res, {
         ...geojson,
         _meta: {
           corridorCount: geojson.features.length,
+          connectorCount: connectorFeatures.length,
           scoringTimeMs: Math.round(elapsed * 100) / 100,
+        },
+        _connectors: {
+          type: "FeatureCollection",
+          features: connectorFeatures,
         },
       });
     } catch (err) {
@@ -406,6 +384,7 @@ function handleLoadLocation(req: IncomingMessage, res: ServerResponse): void {
 }
 
 function handleDebugCorridor(req: IncomingMessage, res: ServerResponse): void {
+  if (!network) { sendJson(res, { error: "No data loaded yet" }, 404); return; }
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const id = url.searchParams.get("id");
   if (!id) {
@@ -483,6 +462,7 @@ function handleDebugCorridorInner(corridor: CorridorNetwork["corridors"] extends
 }
 
 function handleNetworkStats(_req: IncomingMessage, res: ServerResponse): void {
+  if (!network) { sendJson(res, { corridorCount: 0, connectorCount: 0, typeBreakdown: {}, bbox: null, center: null }); return; }
   // Compute bounding box and type breakdown
   let minLat = Infinity, maxLat = -Infinity;
   let minLng = Infinity, maxLng = -Infinity;
@@ -527,6 +507,148 @@ function handleDemCoverage(_req: IncomingMessage, res: ServerResponse): void {
   }
 
   sendJson(res, { tilesDir: SRTM_DIR, tiles });
+}
+
+function handleGenerateRoute(req: IncomingMessage, res: ServerResponse): void {
+  let body = "";
+  req.on("data", (chunk: Buffer) => {
+    body += chunk.toString();
+  });
+  req.on("end", () => {
+    const parsed = JSON.parse(body) as {
+      activityType: ActivityType;
+      scoringParams: ScoringParams;
+      loopSearchParams: LoopSearchParams;
+    };
+
+    doGenerateRoute(parsed, res).catch((err) => {
+      sendJson(res, { error: String(err) }, 400);
+    });
+  });
+}
+
+async function doGenerateRoute(
+  { activityType, scoringParams, loopSearchParams }: {
+    activityType: ActivityType;
+    scoringParams: ScoringParams;
+    loopSearchParams: LoopSearchParams;
+  },
+  res: ServerResponse,
+): Promise<void> {
+  // Always load data centered on the start coordinate with enough radius.
+  // A loop route can extend up to ~targetDistance/(2*pi) from start in any
+  // direction, but real loops aren't circles — use target/3 as radius.
+  const radiusKm = Math.max(
+    DEFAULT_RADIUS_KM,
+    Math.ceil((loopSearchParams.targetDistanceMeters / 1000) / 3),
+  );
+  const startBbox = bboxFromCenter(loopSearchParams.startCoordinate, radiusKm);
+  console.log(`[generate-route] Ensuring data coverage: radius=${radiusKm}km centered on start`);
+
+  // The Overpass cache uses 0.75° tiles. If the start is near a tile edge,
+  // the single-tile fetch misses data on the far side. Fetch ALL tiles that
+  // intersect the start bbox to ensure complete coverage in every direction.
+  const TILE_SIZE = 0.75;
+  const minRow = Math.floor(startBbox.minLat / TILE_SIZE);
+  const maxRow = Math.floor(startBbox.maxLat / TILE_SIZE);
+  const minCol = Math.floor(startBbox.minLng / TILE_SIZE);
+  const maxCol = Math.floor(startBbox.maxLng / TILE_SIZE);
+  const tileCount = (maxRow - minRow + 1) * (maxCol - minCol + 1);
+  console.log(`[generate-route] Need ${tileCount} tile(s): rows ${minRow}-${maxRow}, cols ${minCol}-${maxCol}`);
+
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      const tileBbox = {
+        minLat: row * TILE_SIZE,
+        maxLat: (row + 1) * TILE_SIZE,
+        minLng: col * TILE_SIZE,
+        maxLng: (col + 1) * TILE_SIZE,
+      };
+      await fetchAndMerge(tileBbox);
+    }
+  }
+
+  console.log(`[generate-route] ${activityType}, target=${(loopSearchParams.targetDistanceMeters/1609.34).toFixed(1)}mi, start=(${loopSearchParams.startCoordinate.lat.toFixed(4)}, ${loopSearchParams.startCoordinate.lng.toFixed(4)})`);
+  console.log(`[generate-route] Network: ${network.corridors.size} corridors, ${network.connectors.size} connectors`);
+
+  const start = performance.now();
+
+  // Re-score corridors with provided params
+  console.log(`[generate-route] Scoring corridors...`);
+  for (const corridor of network.corridors.values()) {
+    const score = scoreCorridorWithParams(corridor, scoringParams);
+    if (!corridor.scores) corridor.scores = {};
+    corridor.scores[activityType] = score;
+  }
+
+  console.log(`[generate-route] Scoring done (${(performance.now() - start).toFixed(0)}ms). Running route search...`);
+
+  // Generate loop routes
+  const result = generateLoopRoutes(network, currentGraph, activityType, loopSearchParams);
+
+  if (!result) {
+    sendJson(res, { error: "No routes found. Try adjusting distance or start location." }, 404);
+    return;
+  }
+
+  const elapsed = performance.now() - start;
+
+  // Convert route geometries to GeoJSON for map display
+  const features = [result.primary, ...result.alternatives].map((route, idx) => ({
+    type: "Feature" as const,
+    geometry: {
+      type: "LineString" as const,
+      coordinates: route.geometry.map((c) => [c.lng, c.lat] as [number, number]),
+    },
+    properties: {
+      routeIndex: idx,
+      isPrimary: idx === 0,
+      score: Math.round(route.score * 1000) / 1000,
+      distanceMeters: Math.round(route.stats.totalDistanceMeters),
+      distanceKm: Math.round(route.stats.totalDistanceMeters / 100) / 10,
+      totalStops: route.stats.totalStops,
+      flowScore: route.stats.flowScore,
+      segmentCount: route.segments.length,
+      elevationGain: route.stats.elevationGainMeters ?? null,
+      elevationLoss: route.stats.elevationLossMeters ?? null,
+      stroke: idx === 0 ? "#2563eb" : "#9333ea",
+      "stroke-width": idx === 0 ? 4 : 3,
+      "stroke-opacity": idx === 0 ? 0.9 : 0.6,
+    },
+  }));
+
+  // Build corridor GeoJSON filtered to types used in search
+  const corridorGeoJson = corridorNetworkToGeoJson(network, {
+    includeConnectors: false,
+    scoreActivity: activityType,
+  });
+  // Filter to only corridors the search graph would include
+  const excludedTypes = new Set(["path", "trail"]);
+  const excludedRoadClasses = new Set(["service", "track", "footway"]);
+  const filteredCorridorFeatures = corridorGeoJson.features.filter((f: any) => {
+    const ct = f.properties?.corridorType;
+    const surface = f.properties?.predominantSurface;
+    const roadClass = f.properties?.roadClass;
+    if (excludedTypes.has(ct)) return false;
+    if (activityType === "road-cycling" && surface === "unpaved") return false;
+    if (activityType === "road-cycling" && excludedRoadClasses.has(roadClass)) return false;
+    return true;
+  });
+
+  sendJson(res, {
+    type: "FeatureCollection",
+    features,
+    _meta: {
+      routeCount: 1 + result.alternatives.length,
+      searchTimeMs: Math.round(elapsed * 100) / 100,
+      primary: result.primary.stats,
+    },
+    corridorNetwork: {
+      type: "FeatureCollection",
+      features: filteredCorridorFeatures,
+      _meta: { corridorCount: filteredCorridorFeatures.length },
+    },
+  });
 }
 
 function serveStatic(res: ServerResponse, filename: string, contentType: string): void {
@@ -582,6 +704,8 @@ const server = createServer((req, res) => {
     handleDebugCorridor(req, res);
   } else if (url === "/api/load-location" && method === "POST") {
     handleLoadLocation(req, res);
+  } else if (url === "/api/generate-route" && method === "POST") {
+    handleGenerateRoute(req, res);
   } else {
     res.writeHead(404);
     res.end("Not found");
@@ -593,7 +717,8 @@ const server = createServer((req, res) => {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  await loadData();
+  // Data is loaded on-demand by generate-route endpoint
+  // await loadData();
 
   server.listen(PORT, () => {
     console.log(`\nScoring Tuner running at http://localhost:${PORT}\n`);

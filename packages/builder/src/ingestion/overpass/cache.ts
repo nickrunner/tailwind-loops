@@ -16,8 +16,8 @@ import { join } from "node:path";
 import type { BoundingBox } from "@tailwind-loops/types";
 import type { OverpassJson } from "overpass-ts";
 
-/** Default tile size: 0.3° ≈ 33km (20mi) N-S per tile at mid-latitudes */
-export const DEFAULT_TILE_SIZE = 0.3;
+/** Default tile size: 0.75° ≈ 83km (52mi) N-S per tile at mid-latitudes */
+export const DEFAULT_TILE_SIZE = 0.75;
 
 /** Grid coordinates identifying a tile */
 export interface TileCoord {
