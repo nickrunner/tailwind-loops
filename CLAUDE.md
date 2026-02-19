@@ -6,92 +6,216 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 pnpm install          # Install dependencies
-pnpm build            # Build all packages
-pnpm typecheck        # Type check all packages
+pnpm build            # Build all packages (types → builder → routing)
+pnpm test             # Run all tests
 pnpm -r clean         # Clean build artifacts
 ```
 
-Package-specific commands (from `packages/routing/`):
+Package-specific (run from package dir):
 ```bash
 pnpm build            # Build this package
-pnpm typecheck        # Type check this package
+pnpm test             # Run tests (vitest)
+npx vitest run        # Run tests once
 ```
+
+Tuner:
+```bash
+cd packages/tuner && pnpm start    # Starts on port 3456
+```
+
+Scripts (from `packages/routing/` or `packages/builder/`):
+```bash
+npx tsx scripts/export-corridors.ts --score=road-cycling --corridors-only
+npx tsx scripts/attribute-report.ts   # Generate coverage report
+```
+
+## Monorepo Structure
+
+```
+packages/
+  types/       Shared domain types (zero deps, everything imports from here)
+  builder/     Data ingestion, enrichment, elevation, corridor construction
+  routing/     Scoring, export, search, LLM integration
+  tuner/       Interactive web UI for tuning scoring parameters
+configs/
+  scoring/
+    base/      Per-activity-type scoring defaults (road-cycling.json, etc.)
+    profiles/  Named presets that extend base configs (pro-cyclist.json, etc.)
+data/
+  michigan/grand-rapids/   OSM PBF + SRTM HGT tiles for test region
+```
+
+**Build order matters**: `types` → `builder` → `routing` (routing depends on builder and types).
 
 ## Architecture
 
-Tailwind Loops is a corridor-based route engine for human-powered activities (cycling, running, walking). The key insight is routing on **corridors** (continuous stretches with uniform character) rather than individual street segments, which produces routes with better "flow".
+Tailwind Loops is a corridor-based route engine for human-powered activities. The key insight: route on **corridors** (continuous stretches with uniform character) rather than individual street segments, producing routes with sustained "flow."
+
+### Activity Types
+
+Four activity types with fundamentally different preferences:
+
+| Activity | Surface | Character | Notes |
+|----------|---------|-----------|-------|
+| `road-cycling` | Must be paved (gravel = 0) | Rural roads, collectors | Trails deprioritized (ped traffic, stops) |
+| `gravel-cycling` | Prefers gravel/dirt | Trails, rural roads | Paved is acceptable, not ideal |
+| `running` | Prefers soft surfaces | Trails, paths, neighborhoods | |
+| `walking` | Very permissive | Paths, trails, neighborhoods | |
 
 ### Three-Level Abstraction
 
-1. **Graph** (low-level): Street network from OSM with nodes (intersections) and edges (segments). Each edge has a `SurfaceClassification` with confidence scores from multiple data sources.
+1. **Graph** — Street network from OSM. Nodes (intersections) with elevation, stop/signal/crossing flags. Edges (segments) with rich attributes: road class, surface classification, infrastructure, speed limit, elevation gain/loss/grade, stop/signal/crossing counts, and multi-source enrichment metadata.
 
-2. **Corridors** (high-level): Derived from graph by clustering contiguous similar edges. These are the primary routing unit—a 3-mile rail-trail becomes one corridor, not hundreds of edges.
+2. **Corridors** — Derived from graph by chaining compatible edges. A 5-mile rail-trail becomes one corridor. Each corridor has aggregated attributes (length, predominant surface, stop density, crossing density, bicycle infra continuity, elevation profile, hilliness index) and per-activity scores across 6 dimensions.
 
-3. **Connectors** (linking): Short segments that connect corridors together. These represent transitions between corridors—intersection crossings, short blocks linking two streets, etc. Connectors have their own attributes (crossing difficulty, signals, stops) that factor into route scoring.
+3. **Connectors** — Short segments linking corridors at intersections. Have their own attributes: crossing difficulty (factoring in signals, stops, major road presence), which affects route quality at transitions.
 
 ### Data Pipeline
 
 ```
-OSM + Gravelmap + other sources → Graph (with surface confidence) → Corridors + Connectors → Route Search
-                                                                                    ↑
-                                                       User Intent → RoutingPolicy ─┘
+OSM PBF / Overpass API
+        ↓
+    Graph Builder ──→ Graph (nodes + edges)
+        ↓                    ↓
+    Elevation Enrichment     Enrichment Pipeline
+    (SRTM HGT tiles)        (Gravelmap, Mapillary, etc.)
+        ↓                    ↓
+        └──── Enriched Graph ────┘
+                    ↓
+            Corridor Builder
+            (chain → classify → aggregate → name → score)
+                    ↓
+            CorridorNetwork (corridors + connectors + adjacency)
+                    ↓
+            Route Search (TODO: M3)
 ```
 
-The pipeline produces a `CorridorNetwork` containing both corridors and connectors, which forms the graph that routing operates on.
+### Corridor Construction Pipeline
 
-### Key Domain Concepts
+1. **Chain building** — Group compatible adjacent edges using edge compatibility scoring (road class, surface, name, infrastructure similarity). Bidirectional dedup ensures one corridor per road.
 
-- **SurfaceClassification**: Surface type + confidence score (0-1) + observations from multiple sources. Surface is critical for cycling—gravel vs paved determines route viability.
-- **ActivityIntent**: What user wants (activity type, distance, surface/traffic tolerance)
-- **RoutingPolicy**: Weights and constraints derived from intent, used by search
-- **Corridor**: Continuous stretch with CorridorType (trail, path, neighborhood, rural-road, collector, arterial)
-- **Connector**: Short segment linking corridors, with attributes for crossing difficulty, signals, stops
+2. **Chain classification** — Three heuristics determine corridor vs connector:
+   - Infrastructure-aware variable length thresholds (dedicated infra: 400m, named bike infra: 800m, unnamed: 1609m)
+   - Name continuity bonus (consistent name halves required length)
+   - Homogeneity filter (inconsistent chains need more length)
 
-### Corridor Network Model
+3. **Attribute aggregation** — Length-weighted predominant values for road class, surface, speed limit. Stop/signal/crossing density from OSM node tags (including implicit trail-road crossings). Elevation metrics from DEM: total gain/loss, average/max grade, hilliness index, elevation profile.
 
-The `CorridorNetwork` is the primary structure for routing:
+4. **Classification** — Corridor type assignment: `trail`, `path`, `neighborhood`, `rural-road`, `collector`, `arterial`, `mixed`.
 
-```
-    ═══════════════╗         ╔═══════════════════════
-    CORRIDOR A     ║         ║     CORRIDOR C
-    (rail trail)   ║         ║     (residential)
-    ═══════════════╝         ╚═══════════════════════
-                   │         │
-                   └────┬────┘
-                        │
-                   [CONNECTOR]  ← short segment, scores crossing difficulty
-                        │
-                   ┌────┴────┐
-                   │         │
-    ───────────────┘         └───────────────────────
-              CORRIDOR B (quiet neighborhood)
-```
+5. **Scoring** — Six scoring dimensions per activity type, all parameterized and tunable.
 
-- **Corridors**: Long stretches (100m+ typically) with uniform character
-- **Connectors**: Short segments (<100m typically) that link corridors
-- **Adjacency**: Graph structure where both corridors and connectors are nodes
+### Scoring System
 
-This abstraction reduces a 100k+ edge graph to perhaps 1-5k corridors + connectors, making routing much faster while preserving route quality.
+Six dimensions, weighted per activity type:
+
+| Dimension | What it measures |
+|-----------|-----------------|
+| **Flow** | Length (log curve) + stop density (exponential decay). Rewards long uninterrupted stretches. |
+| **Safety** | Bicycle infra, separation, speed limit, road class, traffic calming. Weighted sub-components. |
+| **Surface** | Activity-specific surface preference × surface confidence. Road cycling: paved=1, gravel=0. |
+| **Character** | Corridor type preference × crossing density decay. Road cycling: rural-road=0.9, trail=0.3. |
+| **Scenic** | Scenic designation fraction × configurable boost. |
+| **Elevation** | Hill preference matching (flat/rolling/hilly/any) + max grade penalty. Uses hilliness index. |
+
+**Scoring configuration** is layered:
+- `configs/scoring/base/<activity>.json` — full default params per activity type
+- `configs/scoring/profiles/<name>.json` — partial overrides extending a base (deep-merged)
+- Hardcoded defaults in `scoring.ts` as fallback
+
+The **tuner** (`packages/tuner/`) provides a Leaflet web UI with sliders for all parameters. Changes re-score corridors in real-time and can write tuned params back to the config files.
+
+### Enrichment Pipeline
+
+Multi-source data fusion framework in `packages/builder/src/enrichment/`:
+
+- **Provider interface** — Pluggable data sources (Gravelmap, Mapillary, municipal data, etc.) return observations for a bounding box
+- **Spatial index** — R-tree-like grid index for efficient edge matching (point detections → nearest edges)
+- **Per-attribute fusion strategies** — Each enrichable attribute (surface, speed-limit, bicycle-infra, etc.) has its own fusion strategy with source-specific confidence weights
+- **Edge enrichment metadata** — `EdgeEnrichment` stores per-attribute confidence + raw observations for transparency
+
+Enrichable attributes: `surface`, `speed-limit`, `stop-sign`, `traffic-signal`, `road-crossing`, `bicycle-infra`, `traffic-calming`, `scenic`.
+
+### Elevation System
+
+SRTM HGT tile reader in `packages/builder/src/elevation/`:
+- Reads 1-arc-second (~30m) or 3-arc-second (~90m) HGT files
+- Per-node elevation lookup, per-edge gain/loss/grade computation
+- Corridor-level: total gain/loss, average/max grade, hilliness index, sampled elevation profile
+
+### Stop/Signal Detection
+
+Three sources of stop controls:
+1. **Explicit OSM tags** — `highway=stop`, `highway=traffic_signals` on nodes
+2. **Explicit crossings** — `highway=crossing` on nodes (only counted on trail/cycleway edges)
+3. **Implicit crossings** — Nodes shared between trail/cycleway ways and road ways (trail-road intersections)
+
+Road crossings only affect trail/cycleway stop density. Road-to-road intersections use explicit stop/signal tags only.
+
+### Key Domain Types (in `@tailwind-loops/types`)
+
+| Type | Description |
+|------|-------------|
+| `Graph` | Nodes + edges + adjacency. Foundation layer. |
+| `GraphNode` | Coordinate + elevation + stop/signal/crossing flags |
+| `EdgeAttributes` | Road class, surface, infra, speed, lanes, elevation, stop counts, enrichment |
+| `SurfaceClassification` | Surface type + confidence + observations from multiple sources |
+| `Corridor` | Name, type, aggregated attributes, edge IDs, geometry, per-activity scores |
+| `Connector` | Edge IDs, corridor IDs, crossing difficulty, signal/stop flags |
+| `CorridorNetwork` | Corridors + connectors + adjacency graph |
+| `ActivityType` | `road-cycling` \| `gravel-cycling` \| `running` \| `walking` |
+| `ScoringParams` | Full parameterized scoring config (weights, flow, safety, surface, character, scenic, elevation) |
+| `EnrichableAttribute` | Union of attributes that can be enriched from external sources |
+| `Observation` | Single data point from a source, with confidence |
 
 ### Module Responsibilities
 
-| Module | Purpose |
-|--------|---------|
-| `domain/` | Core types: Graph, Corridor, Connector, Intent, Route, SurfaceClassification |
-| `ingestion/` | OSM parsing + surface enrichment from providers (Gravelmap, etc.) |
-| `corridors/` | Cluster edges into corridors and connectors, classify by type |
-| `search/` | Corridor-aware route search with policy scoring |
-| `llm/` | Intent interpretation, corridor description, route critique |
+| Package | Module | Purpose |
+|---------|--------|---------|
+| `types` | `*` | All shared domain types, zero dependencies |
+| `builder` | `ingestion/osm/` | OSM PBF parsing, graph building, tag extraction |
+| `builder` | `ingestion/overpass/` | Overpass API queries with caching |
+| `builder` | `elevation/` | SRTM HGT reader, graph elevation enrichment |
+| `builder` | `enrichment/` | Multi-source fusion pipeline, spatial index |
+| `builder` | `corridors/` | Chain building, classification, attribute aggregation, corridor construction |
+| `builder` | `geofabrik/` | Automated PBF downloads by region |
+| `builder` | `location/` | Bbox utilities (center+radius, expansion) |
+| `routing` | `corridors/scoring.ts` | Parameterized 6-dimension scoring engine |
+| `routing` | `corridors/scoring-config.ts` | Layered JSON config loading (base + profile) |
+| `routing` | `export/` | GeoJSON export (corridors, connectors, score heatmaps) |
+| `routing` | `search/` | Corridor-aware route search (stub) |
+| `routing` | `llm/` | Intent interpretation, corridor description (stub) |
+| `tuner` | `server.ts` | Express-less HTTP server, ingests data at startup, serves tuning UI |
+| `tuner` | `public/index.html` | Leaflet map + scoring parameter sliders |
 
-### LLM Role
+## Testing
 
-The LLM is a reasoning layer, not a pathfinder:
-- Interprets natural language intent → RoutingPolicy
-- Labels corridors using measured attributes
-- Critiques routes at high level
+Tests use **Vitest**. Run from package dir or monorepo root.
 
-All spatial reasoning uses computed attributes from real data.
+```bash
+npx vitest run                    # All tests in current package
+npx vitest run src/corridors/     # Tests in a subdirectory
+npx vitest run --watch            # Watch mode
+```
+
+Test data: Grand Rapids, MI metro area (~216K nodes, ~570K edges, ~1K corridors).
 
 ## Project Status
 
-Currently in scaffolding phase. See `docs/milestones.md` for roadmap (M1: Graph Ingestion → M6: Learned Scoring).
+| Milestone | Status | Description |
+|-----------|--------|-------------|
+| M1: Graph Ingestion | ✅ Done | OSM parsing, graph building, surface classification |
+| M2: Corridor Construction | ✅ Done | Chain building, dedup, classification, attribute aggregation |
+| M2.5: Corridor Scoring | ✅ Done | 6-dimension scoring, tuner UI, config system |
+| M3: Routing | 🔜 Next | A* search on corridor network, loop generation |
+| M4: Infrastructure & Data | Planned | Multi-source enrichment, persistence |
+| M5: Application | Planned | User-facing route planning |
+
+## Important Conventions
+
+- **Never push to main directly.** Always work on branches and submit PRs.
+- **TypeScript strict mode** with `noPropertyAccessFromIndexSignature` — use bracket notation for `Record<string, unknown>` properties.
+- **Hex colors in GeoJSON** — HSL is not supported by most viewers (geojson.io, QGIS). Use hex.
+- **pnpm** for package management (available via corepack shims).
+- Corridor types changed: `quiet-road` → split into `neighborhood` + `rural-road`.
+- Surface scores use simplified keys: `paved`, `unpaved`, `unknown` (not individual types like `asphalt`/`concrete`).
