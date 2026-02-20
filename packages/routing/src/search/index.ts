@@ -56,8 +56,9 @@ export function generateLoopRoutes(
   const preferredDirection = params.preferredDirection ?? Math.random() * 360;
   console.log(`[route] Preferred direction: ${preferredDirection.toFixed(0)}°`);
   const t1 = performance.now();
-  const candidates = generateLoops(searchGraph, snap.nodeId, params.targetDistanceMeters, {
-    distanceTolerance: params.distanceTolerance,
+  const candidates = generateLoops(searchGraph, snap.nodeId, {
+    minDistance: params.minDistanceMeters,
+    maxDistance: params.maxDistanceMeters,
     preferredDirection,
     turnFrequency: params.turnFrequency,
     maxAlternatives: params.maxAlternatives,

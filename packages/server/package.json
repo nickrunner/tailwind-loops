@@ -1,0 +1,27 @@
+{
+  "name": "@tailwind-loops/server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsoa spec-and-routes && tsc",
+    "dev": "tsoa spec-and-routes && tsx --watch src/server.ts",
+    "start": "tsoa spec-and-routes && tsx src/server.ts",
+    "clean": "rm -rf dist build"
+  },
+  "dependencies": {
+    "@tailwind-loops/types": "workspace:*",
+    "@tailwind-loops/builder": "workspace:*",
+    "@tailwind-loops/routing": "workspace:*",
+    "@tsoa/runtime": "^6.6.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "tsoa": "^6.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.2"
+  }
+}

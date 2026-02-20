@@ -42,7 +42,7 @@ import type {
   CorridorNetwork,
   LoopSearchParams,
 } from "@tailwind-loops/routing";
-import type { Graph } from "@tailwind-loops/types";
+import type { Graph, Route, Coordinate } from "@tailwind-loops/types";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -72,16 +72,51 @@ function networkCacheKey(bbox: BoundingBox): string {
   return createHash("sha256").update(coords).digest("hex").slice(0, 16);
 }
 
+/** Returns true if `outer` fully contains `inner`. */
+function bboxContains(outer: BoundingBox, inner: BoundingBox): boolean {
+  return (
+    outer.minLat <= inner.minLat &&
+    outer.minLng <= inner.minLng &&
+    outer.maxLat >= inner.maxLat &&
+    outer.maxLng >= inner.maxLng
+  );
+}
+
 function readNetworkCache(bbox: BoundingBox): { graph: Graph; network: CorridorNetwork } | null {
+  // Fast path: exact bbox match
   const key = networkCacheKey(bbox);
   const filePath = join(NETWORK_CACHE_DIR, `${key}.v8`);
-  if (!existsSync(filePath)) return null;
-  try {
-    const buf = readFileSync(filePath);
-    return deserialize(buf) as { graph: Graph; network: CorridorNetwork };
-  } catch {
-    return null;
+  if (existsSync(filePath)) {
+    try {
+      const buf = readFileSync(filePath);
+      return deserialize(buf) as { graph: Graph; network: CorridorNetwork };
+    } catch {
+      // fall through to containment check
+    }
   }
+
+  // Slow path: check if any cached bbox fully contains the requested bbox
+  if (!existsSync(NETWORK_CACHE_DIR)) return null;
+  for (const file of readdirSync(NETWORK_CACHE_DIR)) {
+    if (!file.endsWith(".bbox.json")) continue;
+    try {
+      const cachedBbox = JSON.parse(
+        readFileSync(join(NETWORK_CACHE_DIR, file), "utf-8"),
+      ) as BoundingBox;
+      if (bboxContains(cachedBbox, bbox)) {
+        const cachedKey = file.replace(".bbox.json", "");
+        const cachedV8 = join(NETWORK_CACHE_DIR, `${cachedKey}.v8`);
+        if (!existsSync(cachedV8)) continue;
+        const buf = readFileSync(cachedV8);
+        console.log(`[cache] Containment HIT — requested ${fmtBbox(bbox)} fits inside cached ${fmtBbox(cachedBbox)}`);
+        return deserialize(buf) as { graph: Graph; network: CorridorNetwork };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 function writeNetworkCache(bbox: BoundingBox, graph: Graph, net: CorridorNetwork): void {
@@ -90,6 +125,10 @@ function writeNetworkCache(bbox: BoundingBox, graph: Graph, net: CorridorNetwork
   const filePath = join(NETWORK_CACHE_DIR, `${key}.v8`);
   const buf = serialize({ graph, network: net });
   writeFileSync(filePath, buf);
+  writeFileSync(
+    join(NETWORK_CACHE_DIR, `${key}.bbox.json`),
+    JSON.stringify(bbox),
+  );
   console.log(`[cache] Wrote network cache: ${key} (${(buf.byteLength / 1024 / 1024).toFixed(1)}MB)`);
 }
 
@@ -248,6 +287,137 @@ function handleGenerateRoute(req: IncomingMessage, res: ServerResponse): void {
   });
 }
 
+const OVERPASS_MAX_RETRIES = 3;
+const OVERPASS_RETRY_DELAYS = [2000, 5000, 10000];
+
+async function fetchOverpassWithRetry(query: string): Promise<unknown> {
+  for (let attempt = 0; attempt <= OVERPASS_MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(OVERPASS_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `data=${encodeURIComponent(query)}`,
+      });
+
+      if (res.ok) {
+        return await res.json();
+      }
+
+      // Retry on server errors (429, 500, 502, 503, 504)
+      if (res.status >= 429 && attempt < OVERPASS_MAX_RETRIES) {
+        const delay = OVERPASS_RETRY_DELAYS[attempt] ?? 10000;
+        console.log(`[overpass] ${res.status} ${res.statusText} — retrying in ${delay / 1000}s (attempt ${attempt + 1}/${OVERPASS_MAX_RETRIES})`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+
+      throw new Error(`Overpass API error: ${res.status} ${res.statusText}`);
+    } catch (err) {
+      // Retry on network errors (ECONNRESET, timeout, etc.)
+      if (attempt < OVERPASS_MAX_RETRIES && !(err instanceof Error && err.message.startsWith("Overpass API error"))) {
+        const delay = OVERPASS_RETRY_DELAYS[attempt] ?? 10000;
+        console.log(`[overpass] Network error: ${err} — retrying in ${delay / 1000}s (attempt ${attempt + 1}/${OVERPASS_MAX_RETRIES})`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Overpass API: max retries exceeded");
+}
+
+/** Build per-segment GeoJSON features for a route, with surface info for coloring. */
+function routeToSegmentFeatures(route: Route, routeIndex: number, graph: Graph): unknown[] {
+  const isPrimary = routeIndex === 0;
+  const baseColor = isPrimary ? "#2563eb" : "#9333ea";
+  const unpavedColor = isPrimary ? "#d97706" : "#b45309";
+  const features: unknown[] = [];
+
+  for (const seg of route.segments) {
+    // Build geometry for this segment from its graph edges
+    const coords: [number, number][] = [];
+    let surface = "unknown";
+
+    if (seg.kind === "corridor") {
+      surface = seg.corridor.attributes.predominantSurface;
+      for (const edgeId of seg.traversedEdgeIds) {
+        const edge = graph.edges.get(edgeId);
+        if (!edge) continue;
+        for (const c of edge.geometry) {
+          const pt: [number, number] = [c.lng, c.lat];
+          // Skip duplicate points at segment joins
+          if (coords.length > 0) {
+            const last = coords[coords.length - 1]!;
+            if (Math.abs(last[0] - pt[0]) < 1e-8 && Math.abs(last[1] - pt[1]) < 1e-8) continue;
+          }
+          coords.push(pt);
+        }
+      }
+    } else {
+      for (const edge of seg.edges) {
+        for (const c of edge.geometry) {
+          const pt: [number, number] = [c.lng, c.lat];
+          if (coords.length > 0) {
+            const last = coords[coords.length - 1]!;
+            if (Math.abs(last[0] - pt[0]) < 1e-8 && Math.abs(last[1] - pt[1]) < 1e-8) continue;
+          }
+          coords.push(pt);
+        }
+      }
+    }
+
+    if (coords.length < 2) continue;
+
+    const color = surface === "unpaved" ? unpavedColor : baseColor;
+
+    features.push({
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: coords },
+      properties: {
+        routeIndex,
+        isPrimary,
+        isSegment: true,
+        surface,
+        corridorName: seg.kind === "corridor" ? (seg.corridor.name ?? null) : null,
+        corridorType: seg.kind === "corridor" ? seg.corridor.type : "connector",
+        stroke: color,
+        "stroke-width": isPrimary ? 4 : 3,
+        "stroke-opacity": isPrimary ? 0.9 : 0.6,
+      },
+    });
+  }
+
+  // Also emit a route-level summary feature (invisible, used for popup + arrows)
+  features.push({
+    type: "Feature",
+    geometry: {
+      type: "LineString",
+      coordinates: route.geometry.map((c) => [c.lng, c.lat] as [number, number]),
+    },
+    properties: {
+      routeIndex,
+      isPrimary,
+      isSegment: false,
+      score: Math.round(route.score * 1000) / 1000,
+      distanceMeters: Math.round(route.stats.totalDistanceMeters),
+      distanceKm: Math.round(route.stats.totalDistanceMeters / 100) / 10,
+      totalStops: route.stats.totalStops,
+      flowScore: route.stats.flowScore,
+      segmentCount: route.segments.length,
+      elevationGain: route.stats.elevationGainMeters ?? null,
+      elevationLoss: route.stats.elevationLossMeters ?? null,
+      surfacePaved: route.stats.distanceBySurface?.paved ?? 0,
+      surfaceUnpaved: route.stats.distanceBySurface?.unpaved ?? 0,
+      surfaceUnknown: route.stats.distanceBySurface?.unknown ?? 0,
+      stroke: "#000000",
+      "stroke-width": 0,
+      "stroke-opacity": 0,
+    },
+  });
+
+  return features;
+}
+
 async function doGenerateRoute(
   { activityType, scoringParams, loopSearchParams }: {
     activityType: ActivityType;
@@ -257,11 +427,11 @@ async function doGenerateRoute(
   res: ServerResponse,
 ): Promise<void> {
   // Compute bbox centered on start coordinate with enough radius for the loop.
-  // A loop can extend up to ~targetDistance/2.5 from start — elongated loops
+  // A loop can extend up to ~maxDistance/2.5 from start — elongated loops
   // reach further than circular ones. Add 5km buffer for road network edges.
   const radiusKm = Math.max(
     DEFAULT_RADIUS_KM,
-    Math.ceil((loopSearchParams.targetDistanceMeters / 1000) / 2),
+    Math.ceil((loopSearchParams.maxDistanceMeters / 1000) / 2),
   );
   const startBbox = bboxFromCenter(loopSearchParams.startCoordinate, radiusKm);
   const bufferedBbox = expandBbox(startBbox, 5);
@@ -279,18 +449,10 @@ async function doGenerateRoute(
   } else {
     console.log(`[generate-route] Network cache MISS — fetching + building`);
 
-    // Direct Overpass fetch for the exact bbox
+    // Direct Overpass fetch for the exact bbox (with retry for transient errors)
     const fetchStart = Date.now();
     const query = buildOverpassQuery(bufferedBbox);
-    const overpassRes = await fetch(OVERPASS_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `data=${encodeURIComponent(query)}`,
-    });
-    if (!overpassRes.ok) {
-      throw new Error(`Overpass API error: ${overpassRes.status} ${overpassRes.statusText}`);
-    }
-    const data = await overpassRes.json();
+    const data = await fetchOverpassWithRetry(query);
 
     // Parse into local node/way maps
     const localNodes = new Map<number, OsmNode>();
@@ -329,7 +491,7 @@ async function doGenerateRoute(
     writeNetworkCache(bufferedBbox, localGraph, localNetwork);
   }
 
-  console.log(`[generate-route] ${activityType}, target=${(loopSearchParams.targetDistanceMeters/1609.34).toFixed(1)}mi, start=(${loopSearchParams.startCoordinate.lat.toFixed(4)}, ${loopSearchParams.startCoordinate.lng.toFixed(4)})`);
+  console.log(`[generate-route] ${activityType}, range=${(loopSearchParams.minDistanceMeters/1609.34).toFixed(1)}-${(loopSearchParams.maxDistanceMeters/1609.34).toFixed(1)}mi, start=(${loopSearchParams.startCoordinate.lat.toFixed(4)}, ${loopSearchParams.startCoordinate.lng.toFixed(4)})`);
   console.log(`[generate-route] Network: ${localNetwork.corridors.size} corridors, ${localNetwork.connectors.size} connectors`);
 
   const start = performance.now();
@@ -353,32 +515,14 @@ async function doGenerateRoute(
 
   const elapsed = performance.now() - start;
 
-  // Convert route geometries to GeoJSON for map display
-  const features = [result.primary, ...result.alternatives].map((route, idx) => ({
-    type: "Feature" as const,
-    geometry: {
-      type: "LineString" as const,
-      coordinates: route.geometry.map((c) => [c.lng, c.lat] as [number, number]),
-    },
-    properties: {
-      routeIndex: idx,
-      isPrimary: idx === 0,
-      score: Math.round(route.score * 1000) / 1000,
-      distanceMeters: Math.round(route.stats.totalDistanceMeters),
-      distanceKm: Math.round(route.stats.totalDistanceMeters / 100) / 10,
-      totalStops: route.stats.totalStops,
-      flowScore: route.stats.flowScore,
-      segmentCount: route.segments.length,
-      elevationGain: route.stats.elevationGainMeters ?? null,
-      elevationLoss: route.stats.elevationLossMeters ?? null,
-      surfacePaved: route.stats.distanceBySurface?.paved ?? 0,
-      surfaceUnpaved: route.stats.distanceBySurface?.unpaved ?? 0,
-      surfaceUnknown: route.stats.distanceBySurface?.unknown ?? 0,
-      stroke: idx === 0 ? "#2563eb" : "#9333ea",
-      "stroke-width": idx === 0 ? 4 : 3,
-      "stroke-opacity": idx === 0 ? 0.9 : 0.6,
-    },
-  }));
+  // Convert route geometries to GeoJSON for map display.
+  // Each route is split into per-segment features so unpaved sections
+  // can be colored differently on the map.
+  const features: unknown[] = [];
+  for (const [idx, route] of [result.primary, ...result.alternatives].entries()) {
+    const segmentFeatures = routeToSegmentFeatures(route, idx, localGraph);
+    features.push(...segmentFeatures);
+  }
 
   // Build corridor GeoJSON filtered to types used in search
   const corridorGeoJson = corridorNetworkToGeoJson(localNetwork, {
@@ -419,6 +563,7 @@ function serveStatic(res: ServerResponse, filename: string, contentType: string)
     res.writeHead(200, {
       "Content-Type": contentType,
       "Content-Length": content.length,
+      "Cache-Control": "no-cache",
     });
     res.end(content);
   } catch {

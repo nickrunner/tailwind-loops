@@ -77,10 +77,10 @@ export interface RouteAlternatives {
 export interface LoopSearchParams {
   /** Starting point for the loop */
   startCoordinate: { lat: number; lng: number };
-  /** Target total distance in meters */
-  targetDistanceMeters: number;
-  /** Acceptable deviation from target distance (default 0.20 = ±20%) */
-  distanceTolerance?: number;
+  /** Minimum acceptable distance in meters */
+  minDistanceMeters: number;
+  /** Maximum acceptable distance in meters */
+  maxDistanceMeters: number;
   /** Preferred compass bearing for outward direction (0=N, 90=E, 180=S, 270=W), or omit for any */
   preferredDirection?: number;
   /** How many corridor transitions to prefer */

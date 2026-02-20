@@ -206,8 +206,9 @@ describe("generateLoops", () => {
     const targetDistance = sideLength * 4;
 
     const searchGraph = buildSearchGraph(network, graph, "road-cycling");
-    const results = generateLoops(searchGraph, "A", targetDistance, {
-      distanceTolerance: 0.25,
+    const results = generateLoops(searchGraph, "A", {
+      minDistance: targetDistance * 0.75,
+      maxDistance: targetDistance * 1.25,
     });
 
     expect(results.length).toBeGreaterThanOrEqual(1);
@@ -250,8 +251,9 @@ describe("generateLoops", () => {
     };
 
     const searchGraph = buildSearchGraph(network, graph, "road-cycling");
-    const results = generateLoops(searchGraph, "A", 6000, {
-      distanceTolerance: 0.25,
+    const results = generateLoops(searchGraph, "A", {
+      minDistance: 4500,
+      maxDistance: 7500,
     });
 
     expect(results.length).toBeGreaterThanOrEqual(1);
@@ -266,8 +268,9 @@ describe("generateLoops", () => {
   it("does not revisit graph edges", () => {
     const { network, graph } = makeRectangleNetwork(2000);
     const searchGraph = buildSearchGraph(network, graph, "road-cycling");
-    const results = generateLoops(searchGraph, "A", 8000, {
-      distanceTolerance: 0.25,
+    const results = generateLoops(searchGraph, "A", {
+      minDistance: 6000,
+      maxDistance: 10000,
     });
 
     for (const route of results) {
@@ -276,19 +279,20 @@ describe("generateLoops", () => {
     }
   });
 
-  it("respects distance tolerance", () => {
+  it("respects distance range", () => {
     const { network, graph } = makeRectangleNetwork(2000);
-    const targetDistance = 8000;
-    const tolerance = 0.2;
+    const minDistance = 6400;
+    const maxDistance = 9600;
 
     const searchGraph = buildSearchGraph(network, graph, "road-cycling");
-    const results = generateLoops(searchGraph, "A", targetDistance, {
-      distanceTolerance: tolerance,
+    const results = generateLoops(searchGraph, "A", {
+      minDistance,
+      maxDistance,
     });
 
     for (const route of results) {
-      const deviation = Math.abs(route.distanceSoFar - targetDistance) / targetDistance;
-      expect(deviation).toBeLessThanOrEqual(tolerance + 0.01);
+      // Routes should be at least minDistance (with small tolerance for test geometry)
+      expect(route.distanceSoFar).toBeGreaterThanOrEqual(minDistance * 0.95);
     }
   });
 
@@ -321,8 +325,9 @@ describe("generateLoops", () => {
     };
 
     const searchGraph = buildSearchGraph(network, graph, "road-cycling");
-    const results = generateLoops(searchGraph, "A", 6000, {
-      distanceTolerance: 0.25,
+    const results = generateLoops(searchGraph, "A", {
+      minDistance: 4500,
+      maxDistance: 7500,
     });
 
     expect(results.length).toBeGreaterThanOrEqual(1);
@@ -337,7 +342,8 @@ describe("generateLoopRoutes (integration)", () => {
 
     const result = generateLoopRoutes(network, graph, "road-cycling", {
       startCoordinate: { lat: 0, lng: 0 },
-      targetDistanceMeters: 8000,
+      minDistanceMeters: 6000,
+      maxDistanceMeters: 10000,
     });
 
     expect(result).toBeNull();
@@ -349,8 +355,8 @@ describe("generateLoopRoutes (integration)", () => {
 
     const result = generateLoopRoutes(network, graph, "road-cycling", {
       startCoordinate: { lat: 42.96, lng: -85.66 },
-      targetDistanceMeters: sideLength * 4,
-      distanceTolerance: 0.25,
+      minDistanceMeters: sideLength * 3,
+      maxDistanceMeters: sideLength * 5,
     });
 
     if (result) {

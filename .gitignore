@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+packages/server/build/
 
 # Data files (OSM extracts, etc.)
 # Ignore large state/region files, but allow city-level extracts

@@ -127,8 +127,10 @@ export interface SearchCandidate {
 export interface BeamSearchOptions {
   /** Number of candidates to keep per iteration (default 50) */
   beamWidth?: number;
-  /** Acceptable distance deviation from target (default 0.20 = +/-20%) */
-  distanceTolerance?: number;
+  /** Minimum acceptable distance in meters */
+  minDistance: number;
+  /** Maximum acceptable distance in meters */
+  maxDistance: number;
   /** Preferred outward compass bearing (degrees), or undefined for any */
   preferredDirection?: number;
   /** Turn frequency preference */
@@ -138,12 +140,9 @@ export interface BeamSearchOptions {
 }
 
 const DEFAULT_BEAM_WIDTH = 200;
-const DEFAULT_DISTANCE_TOLERANCE = 0.30;
 const DEFAULT_MAX_ALTERNATIVES = 3;
 const MAX_ITERATIONS = 5000;
 const JACCARD_DEDUP_THRESHOLD = 0.7;
-/** Minimum distance before a return-to-start counts as a completed loop */
-const MIN_LOOP_DISTANCE = 5000;
 /** Radius around start where edge revisiting is allowed (to close the loop) */
 const HOME_ZONE_RADIUS = 1500;
 
@@ -155,22 +154,23 @@ const HOME_ZONE_RADIUS = 1500;
 export function generateLoops(
   searchGraph: SearchGraph,
   startNodeId: string,
-  targetDistance: number,
-  options: BeamSearchOptions = {},
+  options: BeamSearchOptions,
 ): SearchCandidate[] {
   const beamWidth = options.beamWidth ?? DEFAULT_BEAM_WIDTH;
-  const distanceTolerance = options.distanceTolerance ?? DEFAULT_DISTANCE_TOLERANCE;
+  const minDistance = options.minDistance;
+  const maxDistance = options.maxDistance;
+  const midDistance = (minDistance + maxDistance) / 2;
   // If no preferred direction, pick a random one so each run explores differently
   const preferredDirection = options.preferredDirection ?? Math.floor(Math.random() * 360);
   const turnFrequency = options.turnFrequency ?? "moderate";
   const maxAlternatives = options.maxAlternatives ?? DEFAULT_MAX_ALTERNATIVES;
 
-  // Completion requires being within tolerance of target distance
-  const minCompletionDistance = targetDistance * (1 - distanceTolerance);
-  // Return budget: realistic cap for return pruning (generous but not insane)
-  const returnBudget = targetDistance * (1 + distanceTolerance);
+  // Completion requires being at least minDistance
+  const minCompletionDistance = minDistance;
+  // Return budget: use maxDistance as the cap for return pruning
+  const returnBudget = maxDistance;
   // Hard cap: absolute maximum to prevent unbounded exploration
-  const hardDistanceCap = targetDistance * 2;
+  const hardDistanceCap = maxDistance * 1.5;
   const startCoord = searchGraph.nodeCoordinates.get(startNodeId);
   if (!startCoord) return [];
 
@@ -198,7 +198,7 @@ export function generateLoops(
   let fallbackCandidates: SearchCandidate[] = [];
 
   const dirLabel = options.preferredDirection != null ? `${preferredDirection}° (user)` : `${preferredDirection}° (random)`;
-  console.log(`[beam] Starting: target=${(targetDistance / 1000).toFixed(1)}km, tolerance=${distanceTolerance}, beamWidth=${beamWidth}, direction=${dirLabel}, nodes=${searchGraph.nodeCoordinates.size}`);
+  console.log(`[beam] Starting: range=${(minDistance / 1000).toFixed(1)}-${(maxDistance / 1000).toFixed(1)}km, beamWidth=${beamWidth}, direction=${dirLabel}, nodes=${searchGraph.nodeCoordinates.size}`);
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     if (beam.length === 0) {
@@ -237,7 +237,7 @@ export function generateLoops(
           const edgeTarget = searchGraph.nodeCoordinates.get(edge.targetNodeId);
           const edgeDistToStart = edgeTarget ? haversineDistance(edgeTarget, startCoord) : Infinity;
           const canRevisitNearHome =
-            candidate.distanceSoFar > targetDistance * 0.80 &&
+            candidate.distanceSoFar > minDistance * 0.80 &&
             edgeDistToStart < HOME_ZONE_RADIUS;
           if (!canRevisitNearHome) { skippedVisited++; continue; }
         }
@@ -286,25 +286,23 @@ export function generateLoops(
         };
 
         // Check if this candidate completes a loop:
-        // - Exact start node: allowed at 80% of target (same as BFS threshold)
-        // - Near start (within 1km): requires 95% of target to prevent premature completion
+        // - Exact start node: allowed when distance >= minDistance
+        // - Near start (within 1km): also requires >= minDistance
         //   The 1km radius handles real barriers (highways, rivers) near the start point
         const isAtStart = edge.targetNodeId === startNodeId;
         const isNearStart = !isAtStart && distToStart < 1000;
-        const exactStartMinDistance = targetDistance * 0.80;
-        const nearStartMinDistance = targetDistance * 0.95;
 
-        if (isAtStart && newDistance >= exactStartMinDistance) {
+        if (isAtStart && newDistance >= minDistance) {
           completed.push(newCandidate);
           continue;
         }
-        if (isNearStart && newDistance >= nearStartMinDistance) {
+        if (isNearStart && newDistance >= minDistance) {
           completed.push(newCandidate);
           continue;
         }
 
         // Don't add candidates that returned to start too early
-        if (isAtStart && newDistance < exactStartMinDistance) {
+        if (isAtStart && newDistance < minDistance) {
           skippedEarlyReturn++;
           continue;
         }
@@ -321,8 +319,8 @@ export function generateLoops(
     let closedByBfs = 0;
     if (completed.length < maxAlternatives) {
       for (const candidate of nextBeam) {
-        // Only close candidates that are at least 80% of target distance.
-        if (candidate.distanceSoFar < targetDistance * 0.80) continue;
+        // Only close candidates that are at least 80% of minDistance (allow BFS path to add distance).
+        if (candidate.distanceSoFar < minDistance * 0.80) continue;
 
         const coord = searchGraph.nodeCoordinates.get(candidate.currentNodeId);
         if (!coord) continue;
@@ -352,8 +350,11 @@ export function generateLoops(
             visitedEdges: new Set([...candidate.visitedEdges, ...closing.edgeIds]),
             lastEdgeScore: candidate.lastEdgeScore,
           };
-          completed.push(closedCandidate);
-          closedByBfs++;
+          // Only accept if total distance meets minimum
+          if (closedCandidate.distanceSoFar >= minDistance) {
+            completed.push(closedCandidate);
+            closedByBfs++;
+          }
         }
       }
       if (closedByBfs > 0) {
@@ -369,7 +370,7 @@ export function generateLoops(
       let closestToStart = Infinity;
       for (const c of beam) {
         const coord = searchGraph.nodeCoordinates.get(c.currentNodeId);
-        if (coord && c.distanceSoFar > targetDistance * 0.3) {
+        if (coord && c.distanceSoFar > midDistance * 0.3) {
           const d = haversineDistance(coord, startCoord);
           if (d < closestToStart) closestToStart = d;
         }
@@ -379,9 +380,9 @@ export function generateLoops(
     }
 
     // Track best candidates for fallback closing (in case we end with 0 routes).
-    // Keep candidates that have traveled at least 50% of target — these are worth closing.
+    // Keep candidates that have traveled at least 50% of midDistance — these are worth closing.
     if (completed.length === 0) {
-      const viable = nextBeam.filter((c) => c.distanceSoFar >= targetDistance * 0.5);
+      const viable = nextBeam.filter((c) => c.distanceSoFar >= midDistance * 0.5);
       if (viable.length > 0) {
         // Score by corridor quality
         const scored2 = viable.map((c) => ({
@@ -398,7 +399,8 @@ export function generateLoops(
       nextBeam,
       beamWidth,
       startCoord,
-      targetDistance,
+      midDistance,
+      maxDistance,
       searchGraph,
       preferredDirection,
       turnFrequency,
@@ -462,7 +464,7 @@ export function generateLoops(
 
   const scored = completed.map((c) => ({
     candidate: c,
-    score: scoreCompleted(c, targetDistance, turnFrequency),
+    score: scoreCompleted(c, minDistance, maxDistance, turnFrequency),
   }));
   scored.sort((a, b) => b.score - a.score);
 
@@ -480,11 +482,13 @@ export function generateLoops(
  * - Outbound (0-33%):  best corridors heading AWAY from start
  * - Explore  (33-66%): best corridors, no directional bias — run free
  * - Return   (66-100%): best corridors heading TOWARD start (BFS handles navigation)
+ *
+ * @param midDistance - midpoint of [minDistance, maxDistance] range, used for phase transitions
  */
 function scoreActive(
   candidate: SearchCandidate,
   startCoord: Coordinate,
-  targetDistance: number,
+  midDistance: number,
   searchGraph: SearchGraph,
   preferredDirection?: number,
   turnFrequency?: "minimal" | "moderate" | "frequent",
@@ -494,7 +498,7 @@ function scoreActive(
       ? candidate.weightedScoreSum / candidate.corridorDistance
       : 0.5;
 
-  const budgetFraction = candidate.distanceSoFar / targetDistance;
+  const budgetFraction = candidate.distanceSoFar / midDistance;
   const currentCoord = searchGraph.nodeCoordinates.get(candidate.currentNodeId);
   let directionalScore = 0.5; // neutral default
 
@@ -519,7 +523,7 @@ function scoreActive(
     } else {
       // Phase 3 — Return: reward getting closer to start.
       // Gentle pressure — BFS handles actual navigation home.
-      const remaining = targetDistance - candidate.distanceSoFar;
+      const remaining = midDistance - candidate.distanceSoFar;
       if (remaining > 0) {
         const ratio = distToStart / remaining;
         // Gentler than before: ratio=0 → 1.0, ratio=0.5 → 0.61, ratio=1.0 → 0.37
@@ -570,10 +574,13 @@ function scoreActive(
 
 /**
  * Score a completed route for final ranking.
+ *
+ * Distance penalty: zero within [minDistance, maxDistance], scales linearly outside.
  */
 function scoreCompleted(
   candidate: SearchCandidate,
-  targetDistance: number,
+  minDistance: number,
+  maxDistance: number,
   turnFrequency: "minimal" | "moderate" | "frequent",
 ): number {
   const avgScore =
@@ -581,8 +588,14 @@ function scoreCompleted(
       ? candidate.weightedScoreSum / candidate.corridorDistance
       : 0;
 
-  const distanceDeviation =
-    Math.abs(candidate.distanceSoFar - targetDistance) / targetDistance;
+  // Within range: no penalty. Outside range: linear penalty.
+  const actual = candidate.distanceSoFar;
+  let distancePenalty = 0;
+  if (actual < minDistance) {
+    distancePenalty = (minDistance - actual) / minDistance * 0.5;
+  } else if (actual > maxDistance) {
+    distancePenalty = (actual - maxDistance) / maxDistance * 0.5;
+  }
 
   const edgeCount = candidate.edgePath.length;
   const novelty = edgeCount > 0
@@ -601,7 +614,7 @@ function scoreCompleted(
   // a low-scoring route at the right distance.
   return (
     avgScore * 2.0 -
-    distanceDeviation * 0.5 -
+    distancePenalty -
     candidate.connectorPenaltySum +
     0.1 * novelty +
     turnModifier
@@ -615,12 +628,16 @@ function scoreCompleted(
  * - Explore   (33-66% budget): pure score-based — run free
  * - Return    (≥66% budget): homebound reservation ramps up,
  *   BFS handles actual navigation home
+ *
+ * @param midDistance - midpoint of distance range, used for phase transitions
+ * @param maxDistance - upper bound of distance range, used for return budget
  */
 function pruneBeam(
   candidates: SearchCandidate[],
   beamWidth: number,
   startCoord: Coordinate,
-  targetDistance: number,
+  midDistance: number,
+  maxDistance: number,
   searchGraph: SearchGraph,
   preferredDirection?: number,
   turnFrequency?: "minimal" | "moderate" | "frequent",
@@ -636,7 +653,7 @@ function pruneBeam(
     const bear = coord ? bearing(startCoord, coord) : 0;
     return {
       candidate: c,
-      score: scoreActive(c, startCoord, targetDistance, searchGraph, preferredDirection, turnFrequency)
+      score: scoreActive(c, startCoord, midDistance, searchGraph, preferredDirection, turnFrequency)
         + (Math.random() - 0.5) * NOISE_SCALE,
       sector: Math.floor(((bear + 22.5) % 360) / 45),
       distToStart,
@@ -644,7 +661,7 @@ function pruneBeam(
   });
 
   const maxDistTraveled = Math.max(...candidates.map((c) => c.distanceSoFar));
-  const budgetUsed = maxDistTraveled / targetDistance;
+  const budgetUsed = maxDistTraveled / midDistance;
 
   const result: SearchCandidate[] = [];
   const taken = new Set<SearchCandidate>();
@@ -660,7 +677,7 @@ function pruneBeam(
     // Homebound: traveled enough AND closest to start
     // Score by: closeness to start (primary) + route quality (secondary)
     const homebound = scored
-      .filter((s) => s.candidate.distanceSoFar > targetDistance * 0.3)
+      .filter((s) => s.candidate.distanceSoFar > maxDistance * 0.3)
       .sort((a, b) => {
         // Primary: distance to start (closer = better)
         const distDiff = a.distToStart - b.distToStart;

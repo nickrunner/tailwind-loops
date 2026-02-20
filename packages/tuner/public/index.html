@@ -1022,16 +1022,17 @@ function buildDistanceButtons() {
     const btn = document.createElement('button');
     btn.className = 'dist-btn';
     btn.textContent = `${lo}-${hi}`;
-    btn.title = `Generate ${lo}-${hi} mi loop (target: ${(lo + hi) / 2} mi)`;
-    btn.addEventListener('click', () => generateRoute(btn, (lo + hi) / 2));
+    btn.title = `Generate ${lo}-${hi} mi loop`;
+    btn.addEventListener('click', () => generateRoute(btn, lo, hi));
     container.appendChild(btn);
   }
 }
 
-async function generateRoute(btn, targetMiles) {
+async function generateRoute(btn, minMiles, maxMiles) {
   const activity = document.getElementById('activity').value;
   const currentParams = readParams();
-  const targetMeters = Math.round(targetMiles * 1609.34);
+  const minMeters = Math.round(minMiles * 1609.34);
+  const maxMeters = Math.round(maxMiles * 1609.34);
 
   // Disable all distance buttons during generation
   const allBtns = document.querySelectorAll('.dist-btn');
@@ -1041,7 +1042,7 @@ async function generateRoute(btn, targetMiles) {
   activeDistBtn = btn;
   const origText = btn.textContent;
   btn.textContent = '...';
-  document.getElementById('status').textContent = `Generating ${targetMiles} mi route...`;
+  document.getElementById('status').textContent = `Generating ${minMiles}-${maxMiles} mi route...`;
 
   try {
     const res = await fetch('/api/generate-route', {
@@ -1052,7 +1053,8 @@ async function generateRoute(btn, targetMiles) {
         scoringParams: currentParams,
         loopSearchParams: {
           startCoordinate: startLatLng,
-          targetDistanceMeters: targetMeters,
+          minDistanceMeters: minMeters,
+          maxDistanceMeters: maxMeters,
         },
       }),
     });
@@ -1071,37 +1073,51 @@ async function generateRoute(btn, targetMiles) {
       radius: 8, color: '#fff', fillColor: '#2563eb', fillOpacity: 1, weight: 3,
     }).addTo(map).bindTooltip('Start', { permanent: true, direction: 'right', offset: [10, 0] });
 
-    // Render route GeoJSON
+    // Render route GeoJSON — segment features are visible, summary features carry popups
     routeLayer = L.geoJSON(data, {
-      style: (feature) => ({
-        color: feature.properties.stroke || '#2563eb',
-        weight: feature.properties['stroke-width'] || 4,
-        opacity: feature.properties['stroke-opacity'] || 0.9,
-      }),
+      style: (feature) => {
+        const p = feature.properties;
+        if (!p.isSegment) {
+          // Summary feature: invisible but wide for click target
+          return { color: 'transparent', weight: 12, opacity: 0 };
+        }
+        return {
+          color: p.stroke || '#2563eb',
+          weight: p['stroke-width'] || 4,
+          opacity: p['stroke-opacity'] || 0.9,
+        };
+      },
       onEachFeature: (feature, layer) => {
         const p = feature.properties;
-        const label = p.isPrimary ? 'Primary Route' : `Alternative ${p.routeIndex}`;
-        const totalSurfaceDist = (p.surfacePaved || 0) + (p.surfaceUnpaved || 0) + (p.surfaceUnknown || 0);
-        const pctPaved = totalSurfaceDist > 0 ? Math.round((p.surfacePaved || 0) / totalSurfaceDist * 100) : 0;
-        const pctUnpaved = totalSurfaceDist > 0 ? Math.round((p.surfaceUnpaved || 0) / totalSurfaceDist * 100) : 0;
-        const pctUnknown = totalSurfaceDist > 0 ? 100 - pctPaved - pctUnpaved : 0;
-        layer.bindPopup(`
-          <div class="score-popup">
-            <div class="name">${label}</div>
-            <div>Distance: ${p.distanceKm} km (${(p.distanceKm * 0.621371).toFixed(1)} mi)</div>
-            <div>Score: ${p.score} | Stops: ${p.totalStops} | Flow: ${p.flowScore}</div>
-            <div>Segments: ${p.segmentCount}</div>
-            ${p.elevationGain != null ? `<div>Elevation: +${Math.round(p.elevationGain * 3.28084)}ft / -${Math.round(p.elevationLoss * 3.28084)}ft</div>` : ''}
-            <div>Surface: ${pctPaved}% paved, ${pctUnpaved}% unpaved, ${pctUnknown}% unknown</div>
-          </div>
-        `, { maxWidth: 300 });
+        if (p.isSegment) {
+          // Per-segment tooltip with surface + corridor info
+          const name = p.corridorName || p.corridorType || 'connector';
+          layer.bindTooltip(`${name} (${p.surface})`, { sticky: true });
+        } else {
+          // Route-level summary popup
+          const label = p.isPrimary ? 'Primary Route' : `Alternative ${p.routeIndex}`;
+          const totalSurfaceDist = (p.surfacePaved || 0) + (p.surfaceUnpaved || 0) + (p.surfaceUnknown || 0);
+          const pctPaved = totalSurfaceDist > 0 ? Math.round((p.surfacePaved || 0) / totalSurfaceDist * 100) : 0;
+          const pctUnpaved = totalSurfaceDist > 0 ? Math.round((p.surfaceUnpaved || 0) / totalSurfaceDist * 100) : 0;
+          const pctUnknown = totalSurfaceDist > 0 ? 100 - pctPaved - pctUnpaved : 0;
+          layer.bindPopup(`
+            <div class="score-popup">
+              <div class="name">${label}</div>
+              <div>Distance: ${p.distanceKm} km (${(p.distanceKm * 0.621371).toFixed(1)} mi)</div>
+              <div>Score: ${p.score} | Stops: ${p.totalStops} | Flow: ${p.flowScore}</div>
+              <div>Segments: ${p.segmentCount}</div>
+              ${p.elevationGain != null ? `<div>Elevation: +${Math.round(p.elevationGain * 3.28084)}ft / -${Math.round(p.elevationLoss * 3.28084)}ft</div>` : ''}
+              <div>Surface: ${pctPaved}% paved, ${pctUnpaved}% unpaved, ${pctUnknown}% unknown</div>
+            </div>
+          `, { maxWidth: 300 });
+        }
       },
     }).addTo(map);
 
-    // Add directional arrows to each route line
+    // Add directional arrows using segment features (skip invisible summary features)
     const arrowLayers = [];
     for (const feature of data.features) {
-      if (feature.geometry && feature.geometry.type === 'LineString') {
+      if (feature.geometry && feature.geometry.type === 'LineString' && feature.properties.isSegment) {
         const color = feature.properties.stroke || '#2563eb';
         arrowLayers.push(addRouteArrows(feature.geometry.coordinates, color));
       }
@@ -1122,7 +1138,7 @@ async function generateRoute(btn, targetMiles) {
     const meta = data._meta || {};
     const actualMi = meta.primary?.totalDistanceMeters ? (meta.primary.totalDistanceMeters / 1609.34).toFixed(1) : '?';
     document.getElementById('footer').textContent =
-      `Route: ${actualMi} mi (target: ${targetMiles} mi) | ${meta.routeCount} alternative(s) | ${meta.searchTimeMs}ms | ${data.corridorNetwork?._meta?.corridorCount ?? '?'} corridors`;
+      `Route: ${actualMi} mi (${minMiles}-${maxMiles} mi range) | ${meta.routeCount} alternative(s) | ${meta.searchTimeMs}ms | ${data.corridorNetwork?._meta?.corridorCount ?? '?'} corridors`;
     document.getElementById('status').textContent = 'Ready';
   } catch (err) {
     document.getElementById('footer').textContent = `Route error: ${err.message}`;

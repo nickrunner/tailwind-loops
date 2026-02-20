@@ -4,12 +4,12 @@
   "extends": "road-cycling",
   "overrides": {
     "weights": {
-      "flow": 0.2844827586206896,
-      "safety": 0.07758620689655171,
-      "surface": 0.17241379310344826,
-      "character": 0.2844827586206896,
-      "scenic": 0.051724137931034475,
-      "elevation": 0.1293103448275862
+      "flow": 0.30434782608695654,
+      "safety": 0.043478260869565216,
+      "surface": 0.0923913043478261,
+      "character": 0.25,
+      "scenic": 0.02717391304347826,
+      "elevation": 0.2826086956521739
     },
     "characterScores": {
       "mixed": 0.25,
