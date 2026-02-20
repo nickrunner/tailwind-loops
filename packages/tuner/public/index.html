@@ -73,6 +73,7 @@
       <option value="">(base)</option>
     </select>
   </label>
+  <button id="arrows-toggle" style="background:#0f3460;color:#e0e0e0;border:1px solid #533483;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:12px;">Arrows: ON</button>
   <span class="status" id="status">Loading...</span>
 </div>
 
@@ -151,7 +152,11 @@ let corridorLayer = null;
 let connectorLayer = null;
 let highlightGroup = null;
 let routeLayer = null;
+let routeArrowLayer = null;
+let showArrows = true;
 let startMarker = null;
+let startPickerMarker = null;
+let startLatLng = { lat: 42.98656566989668, lng: -85.65484294159361 };
 let map = null;
 let lastGeoJson = null;
 let currentProfile = null; // null = base, string = profile name
@@ -697,6 +702,27 @@ async function init() {
     maxZoom: 19,
   }).addTo(map);
 
+  // Add draggable start point marker
+  startPickerMarker = L.marker([startLatLng.lat, startLatLng.lng], {
+    draggable: true,
+    icon: L.divIcon({
+      className: 'start-picker',
+      html: '<div style="width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,0.5);"></div>',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    }),
+  }).addTo(map).bindTooltip('Drag or click map to move start', { direction: 'right', offset: [12, 0] });
+
+  startPickerMarker.on('dragend', () => {
+    const pos = startPickerMarker.getLatLng();
+    startLatLng = { lat: pos.lat, lng: pos.lng };
+  });
+
+  map.on('click', (e) => {
+    startLatLng = { lat: e.latlng.lat, lng: e.latlng.lng };
+    startPickerMarker.setLatLng(e.latlng);
+  });
+
   // Load profiles list
   await loadProfiles();
 
@@ -729,6 +755,16 @@ async function init() {
 
   // Wire save-as button
   document.getElementById('save-as-btn').addEventListener('click', saveAsProfile);
+
+  // Wire arrows toggle button
+  document.getElementById('arrows-toggle').addEventListener('click', () => {
+    showArrows = !showArrows;
+    document.getElementById('arrows-toggle').textContent = showArrows ? 'Arrows: ON' : 'Arrows: OFF';
+    if (routeArrowLayer) {
+      if (showArrows) map.addLayer(routeArrowLayer);
+      else map.removeLayer(routeArrowLayer);
+    }
+  });
 
   // Wire corridor network visibility toggle
   document.getElementById('show-network').addEventListener('change', (e) => {
@@ -932,7 +968,42 @@ async function clearNetworkCache() {
 
 function clearRoute() {
   if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+  if (routeArrowLayer) { map.removeLayer(routeArrowLayer); routeArrowLayer = null; }
   if (startMarker) { map.removeLayer(startMarker); startMarker = null; }
+}
+
+/** Add directional arrow markers along a route polyline at regular intervals */
+function addRouteArrows(coords, color) {
+  const arrows = [];
+  const INTERVAL_PX = 80; // approximate pixel spacing between arrows
+  const zoom = map.getZoom();
+  // At zoom 12, ~1km between arrows; scale with zoom
+  const intervalMeters = INTERVAL_PX * 156543.03 * Math.cos(coords[0][1] * Math.PI / 180) / Math.pow(2, zoom);
+  let accumulated = 0;
+
+  for (let i = 1; i < coords.length; i++) {
+    const [lng1, lat1] = coords[i - 1];
+    const [lng2, lat2] = coords[i];
+    const dx = (lng2 - lng1) * Math.cos((lat1 + lat2) / 2 * Math.PI / 180) * 111320;
+    const dy = (lat2 - lat1) * 111320;
+    const segLen = Math.sqrt(dx * dx + dy * dy);
+    accumulated += segLen;
+
+    if (accumulated >= intervalMeters) {
+      accumulated = 0;
+      const angle = Math.atan2(lng2 - lng1, lat2 - lat1) * 180 / Math.PI;
+      const midLat = (lat1 + lat2) / 2;
+      const midLng = (lng1 + lng2) / 2;
+      const arrowIcon = L.divIcon({
+        className: 'route-arrow',
+        html: `<div style="transform:rotate(${angle - 90}deg);color:${color};font-size:16px;font-weight:bold;text-shadow:0 0 3px rgba(0,0,0,0.5);">&#9654;</div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      });
+      arrows.push(L.marker([midLat, midLng], { icon: arrowIcon, interactive: false }));
+    }
+  }
+  return L.layerGroup(arrows);
 }
 
 // Distance buckets: [minMiles, maxMiles]
@@ -980,7 +1051,7 @@ async function generateRoute(btn, targetMiles) {
         activityType: activity,
         scoringParams: currentParams,
         loopSearchParams: {
-          startCoordinate: { lat: 42.98656566989668, lng: -85.65484294159361 },
+          startCoordinate: startLatLng,
           targetDistanceMeters: targetMeters,
         },
       }),
@@ -995,8 +1066,8 @@ async function generateRoute(btn, targetMiles) {
 
     clearRoute();
 
-    // Add start marker
-    startMarker = L.circleMarker([42.98656566989668, -85.65484294159361], {
+    // Add start marker at the chosen location
+    startMarker = L.circleMarker([startLatLng.lat, startLatLng.lng], {
       radius: 8, color: '#fff', fillColor: '#2563eb', fillOpacity: 1, weight: 3,
     }).addTo(map).bindTooltip('Start', { permanent: true, direction: 'right', offset: [10, 0] });
 
@@ -1026,6 +1097,17 @@ async function generateRoute(btn, targetMiles) {
         `, { maxWidth: 300 });
       },
     }).addTo(map);
+
+    // Add directional arrows to each route line
+    const arrowLayers = [];
+    for (const feature of data.features) {
+      if (feature.geometry && feature.geometry.type === 'LineString') {
+        const color = feature.properties.stroke || '#2563eb';
+        arrowLayers.push(addRouteArrows(feature.geometry.coordinates, color));
+      }
+    }
+    routeArrowLayer = L.layerGroup(arrowLayers);
+    if (showArrows) routeArrowLayer.addTo(map);
 
     // Zoom to fit the route
     const bounds = routeLayer.getBounds();

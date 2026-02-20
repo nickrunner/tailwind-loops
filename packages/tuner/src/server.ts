@@ -257,13 +257,14 @@ async function doGenerateRoute(
   res: ServerResponse,
 ): Promise<void> {
   // Compute bbox centered on start coordinate with enough radius for the loop.
-  // A loop can extend ~targetDistance/3 from start in any direction.
+  // A loop can extend up to ~targetDistance/2.5 from start — elongated loops
+  // reach further than circular ones. Add 5km buffer for road network edges.
   const radiusKm = Math.max(
     DEFAULT_RADIUS_KM,
-    Math.ceil((loopSearchParams.targetDistanceMeters / 1000) / 3),
+    Math.ceil((loopSearchParams.targetDistanceMeters / 1000) / 2),
   );
   const startBbox = bboxFromCenter(loopSearchParams.startCoordinate, radiusKm);
-  const bufferedBbox = expandBbox(startBbox, 2);
+  const bufferedBbox = expandBbox(startBbox, 5);
   console.log(`[generate-route] radius=${radiusKm}km, bbox=${fmtBbox(bufferedBbox)}`);
 
   let localGraph: Graph;

@@ -160,7 +160,8 @@ export function generateLoops(
 ): SearchCandidate[] {
   const beamWidth = options.beamWidth ?? DEFAULT_BEAM_WIDTH;
   const distanceTolerance = options.distanceTolerance ?? DEFAULT_DISTANCE_TOLERANCE;
-  const preferredDirection = options.preferredDirection;
+  // If no preferred direction, pick a random one so each run explores differently
+  const preferredDirection = options.preferredDirection ?? Math.floor(Math.random() * 360);
   const turnFrequency = options.turnFrequency ?? "moderate";
   const maxAlternatives = options.maxAlternatives ?? DEFAULT_MAX_ALTERNATIVES;
 
@@ -196,7 +197,8 @@ export function generateLoops(
   const MAX_FALLBACK_CANDIDATES = 20;
   let fallbackCandidates: SearchCandidate[] = [];
 
-  console.log(`[beam] Starting: target=${(targetDistance / 1000).toFixed(1)}km, tolerance=${distanceTolerance}, beamWidth=${beamWidth}, nodes=${searchGraph.nodeCoordinates.size}`);
+  const dirLabel = options.preferredDirection != null ? `${preferredDirection}° (user)` : `${preferredDirection}° (random)`;
+  console.log(`[beam] Starting: target=${(targetDistance / 1000).toFixed(1)}km, tolerance=${distanceTolerance}, beamWidth=${beamWidth}, direction=${dirLabel}, nodes=${searchGraph.nodeCoordinates.size}`);
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     if (beam.length === 0) {
