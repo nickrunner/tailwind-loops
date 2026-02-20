@@ -23,7 +23,7 @@ import type { GenerateRouteRequest } from "../models/requests.js";
 import { RegionBuildService } from "./region-build.service.js";
 
 /** Build per-segment GeoJSON features for a route, with surface info for coloring. */
-function routeToSegmentFeatures(
+export function routeToSegmentFeatures(
   route: Route,
   routeIndex: number,
   graph: Graph,

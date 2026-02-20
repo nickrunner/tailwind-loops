@@ -6,7 +6,8 @@
     "clean": "pnpm -r clean",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "tuner": "pnpm --filter @tailwind-loops/tuner start"
+    "tuner": "pnpm --filter @tailwind-loops/tuner start",
+    "serve": "pnpm --filter @tailwind-loops/server start"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",
