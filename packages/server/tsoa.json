@@ -2,6 +2,13 @@
   "entryFile": "src/app.ts",
   "noImplicitAdditionalProperties": "throw-on-extras",
   "controllerPathGlobs": ["src/controllers/**/*.controller.ts"],
+  "compilerOptions": {
+    "paths": {
+      "@tailwind-loops/routing": ["../routing/src/index.ts"],
+      "@tailwind-loops/types": ["../types/src/index.ts"],
+      "@tailwind-loops/builder": ["../builder/src/index.ts"]
+    }
+  },
   "spec": {
     "outputDirectory": "build",
     "specVersion": 3
