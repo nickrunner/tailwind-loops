@@ -3,15 +3,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx src/server.ts"
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@tailwind-loops/types": "workspace:*",
-    "@tailwind-loops/routing": "workspace:*",
-    "@tailwind-loops/builder": "workspace:*"
+    "@tailwind-loops/clients-core": "workspace:*",
+    "@tailwind-loops/clients-react": "workspace:*",
+    "leaflet": "^1.9.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-leaflet": "^5.0.0"
   },
   "devDependencies": {
-    "tsx": "^4.21.0",
-    "typescript": "^5.7.2"
+    "@types/leaflet": "^1.9.17",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0"
   }
 }

@@ -15,119 +15,14 @@ import type {
 import {
   scoreCorridorWithParams,
   generateLoopRoutes,
+  corridorNetworkToGeoJson,
+  routeToSegmentFeatures,
   loadBaseConfig,
   loadProfileConfig,
   type ScoringParams,
 } from "@tailwind-loops/routing";
 import type { GenerateRouteRequest } from "../models/requests.js";
 import { RegionBuildService } from "./region-build.service.js";
-
-/** Build per-segment GeoJSON features for a route, with surface info for coloring. */
-export function routeToSegmentFeatures(
-  route: Route,
-  routeIndex: number,
-  graph: Graph,
-): unknown[] {
-  const isPrimary = routeIndex === 0;
-  const baseColor = isPrimary ? "#2563eb" : "#9333ea";
-  const unpavedColor = isPrimary ? "#d97706" : "#b45309";
-  const features: unknown[] = [];
-
-  for (const seg of route.segments) {
-    const coords: [number, number][] = [];
-    let surface = "unknown";
-
-    if (seg.kind === "corridor") {
-      surface = seg.corridor.attributes.predominantSurface;
-      for (const edgeId of seg.traversedEdgeIds) {
-        const edge = graph.edges.get(edgeId);
-        if (!edge) continue;
-        for (const c of edge.geometry) {
-          const pt: [number, number] = [c.lng, c.lat];
-          if (coords.length > 0) {
-            const last = coords[coords.length - 1]!;
-            if (
-              Math.abs(last[0] - pt[0]) < 1e-8 &&
-              Math.abs(last[1] - pt[1]) < 1e-8
-            )
-              continue;
-          }
-          coords.push(pt);
-        }
-      }
-    } else {
-      for (const edge of seg.edges) {
-        for (const c of edge.geometry) {
-          const pt: [number, number] = [c.lng, c.lat];
-          if (coords.length > 0) {
-            const last = coords[coords.length - 1]!;
-            if (
-              Math.abs(last[0] - pt[0]) < 1e-8 &&
-              Math.abs(last[1] - pt[1]) < 1e-8
-            )
-              continue;
-          }
-          coords.push(pt);
-        }
-      }
-    }
-
-    if (coords.length < 2) continue;
-
-    const color = surface === "unpaved" ? unpavedColor : baseColor;
-
-    features.push({
-      type: "Feature",
-      geometry: { type: "LineString", coordinates: coords },
-      properties: {
-        routeIndex,
-        isPrimary,
-        isSegment: true,
-        surface,
-        corridorName:
-          seg.kind === "corridor" ? (seg.corridor.name ?? null) : null,
-        corridorType:
-          seg.kind === "corridor" ? seg.corridor.type : "connector",
-        stroke: color,
-        "stroke-width": isPrimary ? 4 : 3,
-        "stroke-opacity": isPrimary ? 0.9 : 0.6,
-      },
-    });
-  }
-
-  // Route-level summary feature
-  features.push({
-    type: "Feature",
-    geometry: {
-      type: "LineString",
-      coordinates: route.geometry.map(
-        (c) => [c.lng, c.lat] as [number, number],
-      ),
-    },
-    properties: {
-      routeIndex,
-      isPrimary,
-      isSegment: false,
-      score: Math.round(route.score * 1000) / 1000,
-      distanceMeters: Math.round(route.stats.totalDistanceMeters),
-      distanceKm:
-        Math.round(route.stats.totalDistanceMeters / 100) / 10,
-      totalStops: route.stats.totalStops,
-      flowScore: route.stats.flowScore,
-      segmentCount: route.segments.length,
-      elevationGain: route.stats.elevationGainMeters ?? null,
-      elevationLoss: route.stats.elevationLossMeters ?? null,
-      surfacePaved: route.stats.distanceBySurface?.["paved"] ?? 0,
-      surfaceUnpaved: route.stats.distanceBySurface?.["unpaved"] ?? 0,
-      surfaceUnknown: route.stats.distanceBySurface?.["unknown"] ?? 0,
-      stroke: "#000000",
-      "stroke-width": 0,
-      "stroke-opacity": 0,
-    },
-  });
-
-  return features;
-}
 
 export class RouteGenerationService {
   private regionBuild = new RegionBuildService();
@@ -142,7 +37,7 @@ export class RouteGenerationService {
    */
   async generate(
     req: GenerateRouteRequest,
-  ): Promise<{ type: string; features: unknown[]; _meta: unknown }> {
+  ): Promise<{ type: string; features: unknown[]; _meta: unknown; corridorNetwork?: unknown }> {
     const activityType = req.activityType as ActivityType;
 
     // Resolve scoring params: explicit > profile > base defaults
@@ -212,6 +107,24 @@ export class RouteGenerationService {
       features.push(...routeToSegmentFeatures(route, idx, graph));
     }
 
+    // Build corridor network GeoJSON filtered by activity type
+    const corridorGeoJson = corridorNetworkToGeoJson(network, {
+      includeConnectors: false,
+      scoreActivity: activityType,
+    });
+    const excludedTypes = new Set(["path", "trail"]);
+    const excludedRoadClasses = new Set(["service", "track", "footway"]);
+    const filteredCorridorFeatures = (corridorGeoJson.features as unknown as Record<string, unknown>[]).filter((f) => {
+      const props = f["properties"] as Record<string, unknown> | undefined;
+      const ct = props?.["corridorType"] as string | undefined;
+      const surface = props?.["predominantSurface"] as string | undefined;
+      const roadClass = props?.["roadClass"] as string | undefined;
+      if (ct && excludedTypes.has(ct)) return false;
+      if (activityType === "road-cycling" && surface === "unpaved") return false;
+      if (activityType === "road-cycling" && roadClass && excludedRoadClasses.has(roadClass)) return false;
+      return true;
+    });
+
     return {
       type: "FeatureCollection",
       features,
@@ -219,6 +132,11 @@ export class RouteGenerationService {
         routeCount: 1 + result.alternatives.length,
         searchTimeMs: Math.round(elapsed * 100) / 100,
         primary: result.primary.stats,
+      },
+      corridorNetwork: {
+        type: "FeatureCollection",
+        features: filteredCorridorFeatures,
+        _meta: { corridorCount: filteredCorridorFeatures.length },
       },
     };
   }

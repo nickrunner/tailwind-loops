@@ -26,6 +26,42 @@ import type { BoundingBox } from "@tailwind-loops/builder";
 
 import type { CacheEntry, CacheStats } from "../models/responses.js";
 
+/** Metadata stored alongside each cache entry. */
+interface CacheMetadata {
+  bbox: BoundingBox;
+  innerBbox: BoundingBox;
+}
+
+/**
+ * Parse cache metadata, handling both current and legacy formats.
+ * Legacy format stored just a BoundingBox; new format stores { bbox, innerBbox }.
+ */
+function parseCacheMetadata(raw: unknown): CacheMetadata {
+  if (
+    raw &&
+    typeof raw === "object" &&
+    "bbox" in raw &&
+    "innerBbox" in raw
+  ) {
+    return raw as CacheMetadata;
+  }
+  // Legacy format: raw is a bare BoundingBox — use it as both bbox and innerBbox
+  const bbox = raw as BoundingBox;
+  return { bbox, innerBbox: bbox };
+}
+
+function coordinateInBbox(
+  coord: { lat: number; lng: number },
+  bbox: BoundingBox,
+): boolean {
+  return (
+    coord.lat >= bbox.minLat &&
+    coord.lat <= bbox.maxLat &&
+    coord.lng >= bbox.minLng &&
+    coord.lng <= bbox.maxLng
+  );
+}
+
 const NETWORK_CACHE_DIR = join(homedir(), ".tailwind-loops", "network-cache");
 
 function cacheKey(bbox: BoundingBox): string {
@@ -38,48 +74,63 @@ function cacheKey(bbox: BoundingBox): string {
   return createHash("sha256").update(coords).digest("hex").slice(0, 16);
 }
 
-function bboxContains(outer: BoundingBox, inner: BoundingBox): boolean {
-  return (
-    outer.minLat <= inner.minLat &&
-    outer.minLng <= inner.minLng &&
-    outer.maxLat >= inner.maxLat &&
-    outer.maxLng >= inner.maxLng
-  );
-}
-
 function fmtBbox(bbox: BoundingBox): string {
   return `[${bbox.minLat.toFixed(4)},${bbox.minLng.toFixed(4)} → ${bbox.maxLat.toFixed(4)},${bbox.maxLng.toFixed(4)}]`;
 }
 
 export class NetworkCacheService {
-  read(bbox: BoundingBox): { graph: Graph; network: CorridorNetwork } | null {
-    // Fast path: exact bbox match
-    const key = cacheKey(bbox);
-    const filePath = join(NETWORK_CACHE_DIR, `${key}.v8`);
-    if (existsSync(filePath)) {
-      try {
-        const buf = readFileSync(filePath);
-        return deserialize(buf) as { graph: Graph; network: CorridorNetwork };
-      } catch {
-        // fall through to containment check
-      }
-    }
-
-    // Slow path: check if any cached bbox fully contains the requested bbox
+  /**
+   * Find a cached network that covers the given starting coordinate for a
+   * route of the given radius.
+   *
+   * The effective hit zone is computed dynamically by shrinking the cached
+   * bbox by neededRadiusKm. This ensures the cached data extends at least
+   * neededRadiusKm in every direction from the starting coordinate.
+   * A larger route shrinks the hit zone; a route too large for any cached
+   * entry results in a miss.
+   */
+  read(
+    startCoordinate: { lat: number; lng: number },
+    neededRadiusKm: number,
+  ): { graph: Graph; network: CorridorNetwork } | null {
     if (!existsSync(NETWORK_CACHE_DIR)) return null;
+
+    const latShrink = neededRadiusKm / 111.32;
+
     for (const file of readdirSync(NETWORK_CACHE_DIR)) {
       if (!file.endsWith(".bbox.json")) continue;
       try {
-        const cachedBbox = JSON.parse(
+        const raw = JSON.parse(
           readFileSync(join(NETWORK_CACHE_DIR, file), "utf-8"),
-        ) as BoundingBox;
-        if (bboxContains(cachedBbox, bbox)) {
+        );
+        const metadata = parseCacheMetadata(raw);
+
+        // Shrink the cached bbox by the needed route radius to get the
+        // effective zone where starting points have full coverage
+        const centerLat = (metadata.bbox.minLat + metadata.bbox.maxLat) / 2;
+        const lngShrink =
+          neededRadiusKm / (111.32 * Math.cos((centerLat * Math.PI) / 180));
+        const effectiveHitZone: BoundingBox = {
+          minLat: metadata.bbox.minLat + latShrink,
+          maxLat: metadata.bbox.maxLat - latShrink,
+          minLng: metadata.bbox.minLng + lngShrink,
+          maxLng: metadata.bbox.maxLng - lngShrink,
+        };
+
+        // Skip if the cached data is too small for this route radius
+        if (
+          effectiveHitZone.minLat >= effectiveHitZone.maxLat ||
+          effectiveHitZone.minLng >= effectiveHitZone.maxLng
+        )
+          continue;
+
+        if (coordinateInBbox(startCoordinate, effectiveHitZone)) {
           const cachedKey = file.replace(".bbox.json", "");
           const cachedV8 = join(NETWORK_CACHE_DIR, `${cachedKey}.v8`);
           if (!existsSync(cachedV8)) continue;
           const buf = readFileSync(cachedV8);
           console.log(
-            `[cache] Containment HIT — requested ${fmtBbox(bbox)} fits inside cached ${fmtBbox(cachedBbox)}`,
+            `[cache] HIT — coordinate (${startCoordinate.lat.toFixed(4)},${startCoordinate.lng.toFixed(4)}) within effective zone ${fmtBbox(effectiveHitZone)} (radius=${neededRadiusKm}km)`,
           );
           return deserialize(buf) as { graph: Graph; network: CorridorNetwork };
         }
@@ -93,6 +144,7 @@ export class NetworkCacheService {
 
   write(
     bbox: BoundingBox,
+    innerBbox: BoundingBox,
     graph: Graph,
     network: CorridorNetwork,
   ): void {
@@ -101,12 +153,13 @@ export class NetworkCacheService {
     const filePath = join(NETWORK_CACHE_DIR, `${key}.v8`);
     const buf = serialize({ graph, network });
     writeFileSync(filePath, buf);
+    const metadata: CacheMetadata = { bbox, innerBbox };
     writeFileSync(
       join(NETWORK_CACHE_DIR, `${key}.bbox.json`),
-      JSON.stringify(bbox),
+      JSON.stringify(metadata),
     );
     console.log(
-      `[cache] Wrote network cache: ${key} (${(buf.byteLength / 1024 / 1024).toFixed(1)}MB)`,
+      `[cache] Wrote network cache: ${key} (${(buf.byteLength / 1024 / 1024).toFixed(1)}MB), inner=${fmtBbox(innerBbox)}`,
     );
   }
 
@@ -118,14 +171,15 @@ export class NetworkCacheService {
       if (!file.endsWith(".bbox.json")) continue;
       try {
         const id = file.replace(".bbox.json", "");
-        const bbox = JSON.parse(
+        const raw = JSON.parse(
           readFileSync(join(NETWORK_CACHE_DIR, file), "utf-8"),
-        ) as BoundingBox;
+        );
+        const metadata = parseCacheMetadata(raw);
         const v8Path = join(NETWORK_CACHE_DIR, `${id}.v8`);
         const sizeMB = existsSync(v8Path)
           ? Math.round((statSync(v8Path).size / 1024 / 1024) * 10) / 10
           : 0;
-        entries.push({ id, bbox, sizeMB });
+        entries.push({ id, bbox: metadata.bbox, innerBbox: metadata.innerBbox, sizeMB });
       } catch {
         continue;
       }

@@ -18,9 +18,10 @@ pnpm test             # Run tests (vitest)
 npx vitest run        # Run tests once
 ```
 
-Tuner:
+Server + Tuner:
 ```bash
-cd packages/tuner && pnpm start    # Starts on port 3456
+cd packages/server && pnpm dev     # API server on port 3000
+cd packages/tuner && pnpm dev      # Vite dev server on port 3456 (proxies API to :3000)
 ```
 
 Scripts (from `packages/routing/` or `packages/builder/`):
@@ -33,10 +34,13 @@ npx tsx scripts/attribute-report.ts   # Generate coverage report
 
 ```
 packages/
-  types/       Shared domain types (zero deps, everything imports from here)
-  builder/     Data ingestion, enrichment, elevation, corridor construction
-  routing/     Scoring, export, search, LLM integration
-  tuner/       Interactive web UI for tuning scoring parameters
+  types/           Shared domain types (zero deps, everything imports from here)
+  builder/         Data ingestion, enrichment, elevation, corridor construction
+  routing/         Scoring, export, search, LLM integration
+  server/          Express + TSOA REST API server
+  clients-core/    HTTP client wrappers (axios-based, zero React deps)
+  clients-react/   React hooks + context provider (wraps clients-core)
+  tuner/           Vite + React web UI for tuning scoring parameters
 configs/
   scoring/
     base/      Per-activity-type scoring defaults (road-cycling.json, etc.)
@@ -45,7 +49,22 @@ data/
   michigan/grand-rapids/   OSM PBF + SRTM HGT tiles for test region
 ```
 
-**Build order matters**: `types` → `builder` → `routing` (routing depends on builder and types).
+**Build order matters**: `types` → `builder` → `routing` → `server` → `clients-core` → `clients-react`.
+
+### Client Architecture Pattern
+
+End-to-end data flow: **TSOA controllers** (server) → **core client functions** (`clients-core`) → **`useRemote`-wrapped React hooks** (`clients-react`). Server state flows top-down via props from page components.
+
+### React Component Design (Atomic Design)
+
+| Level | Description | Examples | Server State? |
+|-------|-------------|----------|---------------|
+| **Atoms** | Smallest UI primitives, fully presentational | `Slider`, `Button`, `Checkbox`, `Select`, `Badge`, `ScoreBar` | Never |
+| **Molecules** | Compositions of atoms, still presentational | `CollapsibleSection`, `SliderGroup`, `ScoreBarChart`, `ElevationChart` | Never |
+| **Organisms** | Compositions of molecules, may have local UI state | `Sidebar`, `TunerMap`, `TopBar`, `Footer` | Never — receives via props |
+| **Pages** | Full screens — **this is where server state lives** | `TunerPage` | Yes — all hooks here |
+
+**Key rule**: All `useRemote`/mutation hooks live at the **page level**. Pages fetch data and pass request/response objects down as props. Components below pages are pure/presentational (may have local UI state like open/closed, but no network calls).
 
 ## Architecture
 
@@ -123,7 +142,7 @@ Six dimensions, weighted per activity type:
 - `configs/scoring/profiles/<name>.json` — partial overrides extending a base (deep-merged)
 - Hardcoded defaults in `scoring.ts` as fallback
 
-The **tuner** (`packages/tuner/`) provides a Leaflet web UI with sliders for all parameters. Changes re-score corridors in real-time and can write tuned params back to the config files.
+The **tuner** (`packages/tuner/`) is a Vite + React app using react-leaflet for map display and atomic design for components. It connects to the server via `clients-react` hooks. All server state lives in `TunerPage`; components below are pure/presentational.
 
 ### Enrichment Pipeline
 
@@ -185,8 +204,12 @@ Road crossings only affect trail/cycleway stop density. Road-to-road intersectio
 | `routing` | `export/` | GeoJSON export (corridors, connectors, score heatmaps) |
 | `routing` | `search/` | Corridor-aware route search (stub) |
 | `routing` | `llm/` | Intent interpretation, corridor description (stub) |
-| `tuner` | `server.ts` | Express-less HTTP server, ingests data at startup, serves tuning UI |
-| `tuner` | `public/index.html` | Leaflet map + scoring parameter sliders |
+| `server` | `controllers/` | TSOA REST API controllers (config, routes, regions, health) |
+| `server` | `services/` | Business logic (network cache, region build, route generation) |
+| `clients-core` | `*Client.ts` | HTTP client wrappers for each API domain |
+| `clients-react` | `hooks/` | React Query hooks wrapping clients-core |
+| `tuner` | `pages/TunerPage.tsx` | Page component that owns all server state |
+| `tuner` | `components/` | Atomic design components (atoms/molecules/organisms) |
 
 ## Testing
 

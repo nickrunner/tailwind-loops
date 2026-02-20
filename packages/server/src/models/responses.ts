@@ -12,6 +12,7 @@ export interface CacheStats {
 export interface CacheEntry {
   id: string;
   bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number };
+  innerBbox: { minLat: number; minLng: number; maxLat: number; maxLng: number };
   sizeMB: number;
 }
 
@@ -27,6 +28,18 @@ export interface ProfileListItem {
   name: string;
   description: string;
   extends: string;
+}
+
+export interface SaveConfigResponse {
+  saved: boolean;
+  activityType: string;
+  profileName?: string;
+}
+
+export interface SaveAsProfileResponse {
+  saved: boolean;
+  name: string;
+  activityType: string;
 }
 
 export interface ErrorResponse {

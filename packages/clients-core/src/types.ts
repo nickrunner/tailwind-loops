@@ -76,6 +76,14 @@ export interface GeoJsonFeature {
   properties: RouteFeatureProperties;
 }
 
+export interface CorridorNetworkGeoJson {
+  type: "FeatureCollection";
+  features: unknown[];
+  _meta: {
+    corridorCount: number;
+  };
+}
+
 export interface GenerateRouteResponse {
   type: "FeatureCollection";
   features: GeoJsonFeature[];
@@ -84,6 +92,7 @@ export interface GenerateRouteResponse {
     searchTimeMs: number;
     primary: RouteStats;
   };
+  corridorNetwork?: CorridorNetworkGeoJson;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +124,7 @@ export interface BoundingBox {
 export interface CacheEntry {
   id: string;
   bbox: BoundingBox;
+  innerBbox: BoundingBox;
   sizeMB: number;
 }
 
@@ -134,6 +144,36 @@ export interface ProfileListItem {
   name: string;
   description: string;
   extends: string;
+}
+
+// ---------------------------------------------------------------------------
+// Config Save
+// ---------------------------------------------------------------------------
+
+export interface SaveConfigRequest {
+  activityType: ActivityType;
+  params: Record<string, unknown>;
+  profileName?: string;
+  asBase?: boolean;
+}
+
+export interface SaveConfigResponse {
+  saved: boolean;
+  activityType: string;
+  profileName?: string;
+}
+
+export interface SaveAsProfileRequest {
+  name: string;
+  description: string;
+  activityType: ActivityType;
+  params: Record<string, unknown>;
+}
+
+export interface SaveAsProfileResponse {
+  saved: boolean;
+  name: string;
+  activityType: string;
 }
 
 // ---------------------------------------------------------------------------

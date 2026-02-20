@@ -15,3 +15,19 @@ export interface GenerateRouteRequest {
   /** Named profile to load (ignored if scoringParams provided) */
   profileName?: string;
 }
+
+export interface SaveConfigRequest {
+  activityType: "road-cycling" | "gravel-cycling" | "running" | "walking";
+  params: ScoringParams;
+  /** If provided and asBase is false, saves as this profile name */
+  profileName?: string;
+  /** If true, saves as base config (default if no profileName) */
+  asBase?: boolean;
+}
+
+export interface SaveAsProfileRequest {
+  name: string;
+  description: string;
+  activityType: "road-cycling" | "gravel-cycling" | "running" | "walking";
+  params: ScoringParams;
+}

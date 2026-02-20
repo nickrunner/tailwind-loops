@@ -19,6 +19,7 @@ export type {
   RouteFeatureProperties,
   GeoJsonFeature,
   GenerateRouteResponse,
+  CorridorNetworkGeoJson,
   // Health
   CacheStats,
   HealthResponse,
@@ -29,6 +30,10 @@ export type {
   CacheClearResponse,
   // Config
   ProfileListItem,
+  SaveConfigRequest,
+  SaveConfigResponse,
+  SaveAsProfileRequest,
+  SaveAsProfileResponse,
   // Errors
   ErrorResponse,
 } from "./types.js";

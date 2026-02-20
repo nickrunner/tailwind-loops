@@ -1,5 +1,12 @@
 import { BaseClient, type ClientConfig } from "./baseClient.js";
-import type { ActivityType, ProfileListItem } from "./types.js";
+import type {
+  ActivityType,
+  ProfileListItem,
+  SaveConfigRequest,
+  SaveConfigResponse,
+  SaveAsProfileRequest,
+  SaveAsProfileResponse,
+} from "./types.js";
 
 export class ConfigClient {
   private client: BaseClient;
@@ -13,6 +20,7 @@ export class ConfigClient {
     activity?: ActivityType,
   ): Promise<Record<string, unknown>> {
     return this.client.get<Record<string, unknown>>({
+      path: "defaults",
       query: activity ? { activity } : undefined,
     });
   }
@@ -30,5 +38,25 @@ export class ConfigClient {
   /** List all available scoring profiles */
   public async listProfiles(): Promise<ProfileListItem[]> {
     return this.client.get<ProfileListItem[]>({ path: "profiles" });
+  }
+
+  /** Save scoring config (base or profile) */
+  public async saveConfig(
+    request: SaveConfigRequest,
+  ): Promise<SaveConfigResponse> {
+    return this.client.post<SaveConfigResponse>({
+      path: "save",
+      body: request,
+    });
+  }
+
+  /** Save as a new named profile */
+  public async saveAsProfile(
+    request: SaveAsProfileRequest,
+  ): Promise<SaveAsProfileResponse> {
+    return this.client.post<SaveAsProfileResponse>({
+      path: "save-as",
+      body: request,
+    });
   }
 }

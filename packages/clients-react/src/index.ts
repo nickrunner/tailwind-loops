@@ -25,6 +25,8 @@ export {
   useScoringDefaults,
   useScoringProfile,
   useProfiles,
+  useSaveConfig,
+  useSaveAsProfile,
 } from "./hooks/useConfig.js";
 
 // API hooks — Health
@@ -48,11 +50,16 @@ export type {
   Coordinate,
   GenerateRouteRequest,
   GenerateRouteResponse,
+  CorridorNetworkGeoJson,
   RouteStats,
   GeoJsonFeature,
   HealthResponse,
   CacheEntry,
   CacheListResponse,
   ProfileListItem,
+  SaveConfigRequest,
+  SaveConfigResponse,
+  SaveAsProfileRequest,
+  SaveAsProfileResponse,
   ClientConfig,
 } from "@tailwind-loops/clients-core";

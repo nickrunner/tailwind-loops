@@ -94,8 +94,9 @@ export class RegionBuildService {
       `[region] radius=${radiusKm}km, bbox=${fmtBbox(bufferedBbox)}`,
     );
 
-    // Check disk cache first
-    const cached = this.cache.read(bufferedBbox);
+    // Check disk cache first — dynamically shrinks cached bboxes by
+    // radiusKm so only entries large enough for this route match
+    const cached = this.cache.read(startCoordinate, radiusKm);
     if (cached) {
       console.log(`[region] Network cache HIT — skipping fetch + build`);
       return { graph: cached.graph, network: cached.network, bbox: bufferedBbox };
@@ -142,8 +143,9 @@ export class RegionBuildService {
       `[region] Corridors built in ${Date.now() - corridorStart}ms: ${corridorStats.corridorCount} corridors, ${corridorStats.connectorCount} connectors`,
     );
 
-    // Write to disk cache
-    this.cache.write(bufferedBbox, graph, network);
+    // Write to disk cache — store startBbox as the inner area so nearby
+    // coordinates can reuse this entry without refetching
+    this.cache.write(bufferedBbox, startBbox, graph, network);
 
     return { graph, network, bbox: bufferedBbox };
   }
