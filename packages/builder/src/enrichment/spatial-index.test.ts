@@ -24,7 +24,6 @@ function makeEdge(
       surfaceClassification: {
         surface: "paved",
         confidence: 0.7,
-        observations: [],
         hasConflict: false,
       },
       infrastructure: {

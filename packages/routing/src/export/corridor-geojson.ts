@@ -187,6 +187,7 @@ function corridorToFeature(
     stopDensityPerKm: Math.round(attributes.stopDensityPerKm * 100) / 100,
     crossingDensityPerKm: Math.round(attributes.crossingDensityPerKm * 100) / 100,
     edgeCount: corridor.edgeIds.length,
+    isDestination: corridor.isDestination ?? false,
   };
 
   if (attributes.averageSpeedLimit != null) {

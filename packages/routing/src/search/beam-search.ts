@@ -135,14 +135,10 @@ export interface BeamSearchOptions {
   preferredDirection?: number;
   /** Turn frequency preference */
   turnFrequency?: "minimal" | "moderate" | "frequent";
-  /** Maximum number of completed routes to return (default 3) */
-  maxAlternatives?: number;
 }
 
 const DEFAULT_BEAM_WIDTH = 200;
-const DEFAULT_MAX_ALTERNATIVES = 3;
 const MAX_ITERATIONS = 5000;
-const JACCARD_DEDUP_THRESHOLD = 0.7;
 /** Radius around start where edge revisiting is allowed (to close the loop) */
 const HOME_ZONE_RADIUS = 1500;
 
@@ -163,7 +159,7 @@ export function generateLoops(
   // If no preferred direction, pick a random one so each run explores differently
   const preferredDirection = options.preferredDirection ?? Math.floor(Math.random() * 360);
   const turnFrequency = options.turnFrequency ?? "moderate";
-  const maxAlternatives = options.maxAlternatives ?? DEFAULT_MAX_ALTERNATIVES;
+  const maxAlternatives = 1;
 
   // Completion requires being at least minDistance
   const minCompletionDistance = minDistance;
@@ -468,11 +464,7 @@ export function generateLoops(
   }));
   scored.sort((a, b) => b.score - a.score);
 
-  // Deduplicate by Jaccard similarity
-  return deduplicateRoutes(
-    scored.map((s) => s.candidate),
-    maxAlternatives,
-  );
+  return scored.slice(0, 1).map((s) => s.candidate);
 }
 
 /**
@@ -730,31 +722,3 @@ function pruneBeam(
   return result;
 }
 
-/**
- * Deduplicate routes using Jaccard similarity on visited edge sets.
- */
-function deduplicateRoutes(
-  candidates: SearchCandidate[],
-  maxAlternatives: number,
-): SearchCandidate[] {
-  const result: SearchCandidate[] = [];
-
-  for (const candidate of candidates) {
-    if (result.length >= maxAlternatives) break;
-
-    const isDuplicate = result.some((existing) => {
-      const intersection = new Set(
-        [...candidate.visitedEdges].filter((id) => existing.visitedEdges.has(id)),
-      );
-      const union = new Set([...candidate.visitedEdges, ...existing.visitedEdges]);
-      const jaccard = union.size > 0 ? intersection.size / union.size : 0;
-      return jaccard > JACCARD_DEDUP_THRESHOLD;
-    });
-
-    if (!isDuplicate) {
-      result.push(candidate);
-    }
-  }
-
-  return result;
-}

@@ -108,9 +108,7 @@ function reportEdgeAttributes(graph: Graph) {
     const a = edge.attributes;
     const len = a.lengthMeters / 1000;
 
-    const hasExplicit = a.surfaceClassification.observations.some(
-      o => o.source === "osm-surface-tag"
-    );
+    const hasExplicit = a.surfaceClassification.confidence >= 0.8;
     if (hasExplicit) { explicitSurface++; explicitSurfaceKm += len; }
 
     if (a.speedLimit !== undefined) { hasSpeedLimit++; hasSpeedLimitKm += len; }

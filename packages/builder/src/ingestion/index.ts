@@ -1,21 +1,14 @@
 /**
  * Data ingestion module.
  *
- * Responsible for building the graph from multiple data sources:
- * 1. OSM provides the geometric foundation (nodes, edges, road classification)
- * 2. Surface data providers enrich edges with surface confidence
+ * Responsible for building the graph from OSM data.
  *
  * Pipeline:
- * OSM PBF -> Base Graph -> Surface Enrichment -> Final Graph
+ * OSM PBF / Overpass API -> Graph -> Enrichment Pipeline -> Enriched Graph
  */
 
 import type {
   Graph,
-  Coordinate,
-  GraphEdge,
-  SurfaceObservation,
-  SurfaceClassification,
-  SurfaceDataSource,
   SurfaceType,
   BoundingBox,
 } from "@tailwind-loops/types";
@@ -25,40 +18,6 @@ import type { OverpassOptions } from "./overpass/index.js";
 
 // Re-export BoundingBox from types for backward compatibility
 export type { BoundingBox } from "@tailwind-loops/types";
-
-/**
- * A provider of surface data for graph enrichment.
- *
- * Implementations include:
- * - GravelmapProvider: Fetches from gravelmap.com API
- * - StravaHeatmapProvider: Analyzes Strava usage patterns
- * - etc.
- */
-export interface SurfaceDataProvider {
-  /** Unique identifier for this provider */
-  readonly source: SurfaceDataSource;
-
-  /** Human-readable name */
-  readonly name: string;
-
-  /**
-   * Fetch surface observations for edges within a bounding box.
-   *
-   * Returns a map of edge geometry hash -> observation.
-   * The geometry hash allows matching provider data to graph edges.
-   */
-  fetchObservations(
-    bounds: BoundingBox
-  ): Promise<Map<string, SurfaceObservation>>;
-
-  /**
-   * Match an edge to provider data and return an observation if found.
-   *
-   * @param edge - The graph edge to match
-   * @returns Surface observation if the provider has data for this edge
-   */
-  matchEdge(edge: GraphEdge): Promise<SurfaceObservation | null>;
-}
 
 /** Options for OSM ingestion (base graph) */
 export interface OsmIngestionOptions {
@@ -74,9 +33,7 @@ export interface OsmIngestionOptions {
 export interface IngestionOptions {
   /** OSM source configuration */
   osm: OsmIngestionOptions;
-  /** Surface data providers to use for enrichment */
-  surfaceProviders?: SurfaceDataProvider[];
-  /** Generalized enrichment providers (supersedes surfaceProviders) */
+  /** Enrichment providers for multi-source data fusion */
   enrichmentProviders?: import("../enrichment/provider.js").EnrichmentProvider[];
   /** Elevation enrichment from DEM tiles */
   elevation?: { dem: import("../elevation/hgt-reader.js").DemConfig };
@@ -114,7 +71,7 @@ export interface IngestionResult {
  * Ingest OSM data and build the base graph.
  *
  * This creates a graph with surface data derived only from OSM tags.
- * Use `enrichSurfaces` to add data from additional providers.
+ * Use the enrichment pipeline to add data from additional providers.
  *
  * @param options - OSM ingestion options
  * @returns The base graph and statistics
@@ -193,107 +150,6 @@ function computeSurfaceStats(graph: Graph): SurfaceStats {
 }
 
 /**
- * Enrich graph edges with surface data from additional providers.
- *
- * This queries each provider and fuses their observations with
- * existing surface data to improve confidence scores.
- *
- * @param graph - The graph to enrich (modified in place)
- * @param providers - Surface data providers to query
- * @param bounds - Bounding box for the region
- * @returns Updated surface statistics
- */
-export async function enrichSurfaces(
-  _graph: Graph,
-  _providers: SurfaceDataProvider[],
-  _bounds: BoundingBox
-): Promise<SurfaceStats> {
-  // TODO: Implement surface enrichment
-  // 1. For each provider, fetch observations for the region
-  // 2. Match observations to graph edges
-  // 3. Fuse observations using fuseSurfaceObservations
-  // 4. Update edge surface classifications
-  // 5. Return updated stats
-  throw new Error("Not implemented: enrichSurfaces");
-}
-
-/**
- * Fuse multiple surface observations into a single classification.
- *
- * Uses a weighted voting scheme where:
- * - Explicit sources (OSM tag, Gravelmap) outweigh inferred sources
- * - Multiple agreeing sources increase confidence
- * - Conflicts are flagged for review
- *
- * @param observations - All observations for an edge
- * @returns Fused surface classification
- */
-export function fuseSurfaceObservations(
-  observations: SurfaceObservation[]
-): SurfaceClassification {
-  if (observations.length === 0) {
-    return {
-      surface: "unknown",
-      confidence: 0,
-      observations: [],
-      hasConflict: false,
-    };
-  }
-
-  // Source priority weights (higher = more trusted)
-  const sourceWeights: Record<SurfaceDataSource, number> = {
-    "gravelmap": 0.9, // Cycling-specific, crowd-sourced
-    "user-report": 0.85, // Direct user feedback
-    "osm-surface-tag": 0.7, // Explicit but may be stale
-    "strava-heatmap": 0.5, // Indirect signal
-    "satellite-ml": 0.4, // ML-based, variable quality
-    "osm-highway-inferred": 0.2, // Inference only
-  };
-
-  // Group observations by surface type
-  const votes = new Map<SurfaceType, number>();
-  for (const obs of observations) {
-    const weight = sourceWeights[obs.source] * obs.sourceConfidence;
-    votes.set(obs.surface, (votes.get(obs.surface) ?? 0) + weight);
-  }
-
-  // Find winning surface type
-  let maxVotes = 0;
-  let winnerSurface: SurfaceType = "unknown";
-  for (const [surface, voteWeight] of votes) {
-    if (voteWeight > maxVotes) {
-      maxVotes = voteWeight;
-      winnerSurface = surface;
-    }
-  }
-
-  // Check for conflicts (multiple surfaces with significant votes)
-  const significantVotes = [...votes.entries()].filter(
-    ([, v]) => v > maxVotes * 0.15
-  );
-  const hasConflict = significantVotes.length > 1;
-
-  // Calculate confidence based on:
-  // - Number of sources
-  // - Agreement between sources
-  // - Quality of sources
-  const totalWeight = [...votes.values()].reduce((a, b) => a + b, 0);
-  const agreement = maxVotes / totalWeight;
-  const sourceCount = observations.length;
-  const confidence = Math.min(
-    0.95,
-    agreement * 0.5 + Math.min(sourceCount / 3, 1) * 0.3 + (maxVotes / 2) * 0.2
-  );
-
-  return {
-    surface: winnerSurface,
-    confidence,
-    observations,
-    hasConflict,
-  };
-}
-
-/**
  * Full ingestion pipeline: OSM + enrichment.
  *
  * @param options - Full ingestion options
@@ -303,39 +159,20 @@ export async function ingest(options: IngestionOptions): Promise<IngestionResult
   // 1. Ingest base graph from OSM
   const result = await ingestOsm(options.osm);
 
-  // 2. Enrich with additional surface providers (legacy path)
-  if (options.surfaceProviders && options.surfaceProviders.length > 0) {
-    const bounds = options.osm.bounds ?? inferBounds(result.graph);
-    result.stats.surface = await enrichSurfaces(
-      result.graph,
-      options.surfaceProviders,
-      bounds
-    );
-  }
-
-  // 3. Enrich with elevation data from DEM
+  // 2. Enrich with elevation data from DEM
   if (options.elevation) {
     const { enrichElevation } = await import("../elevation/index.js");
     enrichElevation(result.graph, options.elevation);
   }
 
-  // 4. Enrich with generalized enrichment providers
+  // 3. Enrich with enrichment providers
   if (options.enrichmentProviders && options.enrichmentProviders.length > 0) {
     const { enrichGraph } = await import("../enrichment/pipeline.js");
-    const { SurfaceProviderAdapter } = await import("../enrichment/adapter.js");
-
-    // Wrap any legacy surface providers as enrichment providers
-    const allProviders = [...options.enrichmentProviders];
-    if (options.surfaceProviders) {
-      for (const sp of options.surfaceProviders) {
-        allProviders.push(new SurfaceProviderAdapter(sp));
-      }
-    }
 
     const bounds = options.osm.bounds ?? inferBounds(result.graph);
     await enrichGraph(result.graph, {
       bounds,
-      providers: allProviders,
+      providers: options.enrichmentProviders,
     });
 
     // Recompute surface stats after enrichment

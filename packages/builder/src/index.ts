@@ -15,11 +15,8 @@
 export {
   ingestOsm,
   ingestFromOverpass,
-  enrichSurfaces,
-  fuseSurfaceObservations,
   ingest,
   type BoundingBox,
-  type SurfaceDataProvider,
   type OsmIngestionOptions,
   type IngestionOptions,
   type SurfaceStats,
@@ -54,9 +51,6 @@ export {
   EXCLUDED_HIGHWAYS,
   isRelevantHighway,
 } from "./ingestion/osm/index.js";
-
-// Surface providers
-export { GravelmapProvider, type GravelmapConfig } from "./ingestion/providers/index.js";
 
 // Corridor building
 export {

@@ -98,6 +98,8 @@ export interface Corridor {
   geometry: Coordinate[];
   /** Whether this corridor is one-way (directional) or bidirectional */
   oneWay: boolean;
+  /** Whether this corridor is a destination (high-value dead end preserved from trimming) */
+  isDestination?: boolean;
   /** Per-activity scoring breakdown (populated by scoring module) */
   scores?: Partial<Record<ActivityType, CorridorScore>>;
 }

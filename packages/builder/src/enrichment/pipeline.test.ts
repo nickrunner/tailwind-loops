@@ -34,7 +34,6 @@ function makeEdge(
       surfaceClassification: {
         surface: "unknown",
         confidence: 0.2,
-        observations: [],
         hasConflict: false,
       },
       infrastructure: {

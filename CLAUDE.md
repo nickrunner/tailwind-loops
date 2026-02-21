@@ -30,6 +30,30 @@ npx tsx scripts/export-corridors.ts --score=road-cycling --corridors-only
 npx tsx scripts/attribute-report.ts   # Generate coverage report
 ```
 
+## Docker
+
+```bash
+docker compose build                    # Build server image
+docker compose up overpass              # Start Overpass (first run imports MI PBF, ~15-30 min)
+docker compose up                       # Start full stack (Overpass + server)
+docker compose down                     # Stop all services
+docker compose down -v                  # Stop + remove volumes (clears Overpass DB + cache)
+```
+
+Test Overpass directly:
+```bash
+curl "http://localhost:8080/api/interpreter?data=[out:json];node(42.9,-85.7,43.0,-85.6);out%201;"
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OVERPASS_ENDPOINT` | `https://overpass-api.de/api/interpreter` | Overpass API URL. Set to local instance for production. |
+| `ELEVATION_TILES_DIR` | *(unset — elevation skipped)* | Path to SRTM HGT tiles. Enables elevation enrichment when set. |
+| `CACHE_DIR` | `~/.tailwind-loops` | Parent dir for network cache (`<CACHE_DIR>/network-cache/`). |
+| `PORT` | `3000` | Server listen port. |
+
 ## Monorepo Structure
 
 ```

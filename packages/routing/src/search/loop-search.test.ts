@@ -22,7 +22,6 @@ import type {
 const DEFAULT_SURFACE: SurfaceClassification = {
   surface: "paved",
   confidence: 1,
-  observations: [],
   hasConflict: false,
 };
 
@@ -349,7 +348,7 @@ describe("generateLoopRoutes (integration)", () => {
     expect(result).toBeNull();
   });
 
-  it("returns RouteAlternatives with valid Route objects", () => {
+  it("returns a valid Route object", () => {
     const sideLength = 2000;
     const { network, graph } = makeRectangleNetwork(sideLength);
 
@@ -360,11 +359,10 @@ describe("generateLoopRoutes (integration)", () => {
     });
 
     if (result) {
-      expect(result.primary).toBeDefined();
-      expect(result.primary.id).toBe("route-0");
-      expect(result.primary.segments.length).toBeGreaterThan(0);
-      expect(result.primary.stats.totalDistanceMeters).toBeGreaterThan(0);
-      expect(result.primary.score).toBeGreaterThan(0);
+      expect(result.id).toBe("route-0");
+      expect(result.segments.length).toBeGreaterThan(0);
+      expect(result.stats.totalDistanceMeters).toBeGreaterThan(0);
+      expect(result.score).toBeGreaterThan(0);
     }
   });
 });

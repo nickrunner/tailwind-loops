@@ -53,66 +53,66 @@ describe("extractRoadClass", () => {
 
 describe("extractSurface", () => {
   it("returns high confidence for explicit asphalt tag", () => {
-    const obs = extractSurface({ surface: "asphalt" });
-    expect(obs.surface).toBe("paved");
-    expect(obs.source).toBe("osm-surface-tag");
-    expect(obs.sourceConfidence).toBe(0.8);
+    const result = extractSurface({ surface: "asphalt" });
+    expect(result.surface).toBe("paved");
+    expect(result.confidence).toBe(0.8);
+    expect(result.hasConflict).toBe(false);
   });
 
   it("returns high confidence for explicit gravel tag", () => {
-    const obs = extractSurface({ surface: "gravel" });
-    expect(obs.surface).toBe("unpaved");
-    expect(obs.source).toBe("osm-surface-tag");
-    expect(obs.sourceConfidence).toBe(0.8);
+    const result = extractSurface({ surface: "gravel" });
+    expect(result.surface).toBe("unpaved");
+    expect(result.confidence).toBe(0.8);
+    expect(result.hasConflict).toBe(false);
   });
 
   it("maps fine_gravel to unpaved", () => {
-    const obs = extractSurface({ surface: "fine_gravel" });
-    expect(obs.surface).toBe("unpaved");
+    const result = extractSurface({ surface: "fine_gravel" });
+    expect(result.surface).toBe("unpaved");
   });
 
   it("maps compacted to unpaved", () => {
-    const obs = extractSurface({ surface: "compacted" });
-    expect(obs.surface).toBe("unpaved");
+    const result = extractSurface({ surface: "compacted" });
+    expect(result.surface).toBe("unpaved");
   });
 
   it("maps dirt to unpaved", () => {
-    const obs = extractSurface({ surface: "dirt" });
-    expect(obs.surface).toBe("unpaved");
+    const result = extractSurface({ surface: "dirt" });
+    expect(result.surface).toBe("unpaved");
   });
 
   it("maps earth to unpaved", () => {
-    const obs = extractSurface({ surface: "earth" });
-    expect(obs.surface).toBe("unpaved");
+    const result = extractSurface({ surface: "earth" });
+    expect(result.surface).toBe("unpaved");
   });
 
   it("returns low confidence for highway inference", () => {
-    const obs = extractSurface({ highway: "track" });
-    expect(obs.surface).toBe("unpaved");
-    expect(obs.source).toBe("osm-highway-inferred");
-    expect(obs.sourceConfidence).toBe(0.3);
+    const result = extractSurface({ highway: "track" });
+    expect(result.surface).toBe("unpaved");
+    expect(result.confidence).toBe(0.3);
+    expect(result.hasConflict).toBe(false);
   });
 
   it("infers paved for residential roads", () => {
-    const obs = extractSurface({ highway: "residential" });
-    expect(obs.surface).toBe("paved");
-    expect(obs.source).toBe("osm-highway-inferred");
+    const result = extractSurface({ highway: "residential" });
+    expect(result.surface).toBe("paved");
+    expect(result.confidence).toBe(0.3);
   });
 
   it("infers unknown for path without surface tag", () => {
-    const obs = extractSurface({ highway: "path" });
-    expect(obs.surface).toBe("unknown");
+    const result = extractSurface({ highway: "path" });
+    expect(result.surface).toBe("unknown");
   });
 
   it("prefers explicit surface tag over highway inference", () => {
-    const obs = extractSurface({ highway: "residential", surface: "gravel" });
-    expect(obs.surface).toBe("unpaved");
-    expect(obs.source).toBe("osm-surface-tag");
+    const result = extractSurface({ highway: "residential", surface: "gravel" });
+    expect(result.surface).toBe("unpaved");
+    expect(result.confidence).toBe(0.8);
   });
 
   it("uses provided roadClass for inference", () => {
-    const obs = extractSurface({}, "track");
-    expect(obs.surface).toBe("unpaved");
+    const result = extractSurface({}, "track");
+    expect(result.surface).toBe("unpaved");
   });
 });
 

@@ -6,7 +6,6 @@
  */
 
 export type { EnrichmentProvider } from "./provider.js";
-export { SurfaceProviderAdapter } from "./adapter.js";
 export { EdgeSpatialIndex } from "./spatial-index.js";
 export {
   type FusionStrategy,

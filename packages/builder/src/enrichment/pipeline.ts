@@ -234,7 +234,6 @@ function applyResolvedValue(
         attrs.surfaceClassification = {
           surface: value,
           confidence: attrs.enrichment.surface.confidence,
-          observations: attrs.surfaceClassification.observations,
           hasConflict: attrs.enrichment.surface.hasConflict,
         };
       }

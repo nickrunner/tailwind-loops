@@ -1,0 +1,19 @@
+services:
+  overpass:
+    image: wiktorn/overpass-api:latest
+    platform: linux/amd64
+    volumes:
+      - overpass-db:/db
+    entrypoint: ["/bin/bash", "-c", "chmod 755 /db && exec /app/docker-entrypoint.sh"]
+    environment:
+      OVERPASS_META: "yes"
+      OVERPASS_MODE: init
+      OVERPASS_PLANET_URL: https://download.geofabrik.de/north-america/us/michigan-latest.osm.pbf
+      OVERPASS_PLANET_PREPROCESS: "mv /db/planet.osm.bz2 /db/planet.osm.pbf && osmium cat -o /db/planet.osm.bz2 /db/planet.osm.pbf && rm /db/planet.osm.pbf"
+      OVERPASS_RULES_LOAD: "10"
+    ports:
+      - "8888:80"
+    restart: unless-stopped
+
+volumes:
+  overpass-db:

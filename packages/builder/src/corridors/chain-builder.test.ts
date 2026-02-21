@@ -4,6 +4,7 @@ import {
   getCounterpartEdgeId,
   computeUndirectedDegree,
   trimDeadEnds,
+  isDestinationCandidate,
 } from "./chain-builder.js";
 import type { EdgeChain } from "./chain-builder.js";
 import type {
@@ -24,7 +25,6 @@ function makeAttributes(
     surfaceClassification: {
       surface: "paved",
       confidence: 0.8,
-      observations: [],
       hasConflict: false,
     },
     infrastructure: {
@@ -1038,7 +1038,7 @@ describe("trimDeadEnds", () => {
       totalLengthMeters: 200,
     };
 
-    const trimmed = trimDeadEnds([chain], graph, nodeDegree);
+    const { chains: trimmed } = trimDeadEnds([chain], graph, nodeDegree);
     expect(trimmed).toHaveLength(1);
     expect(trimmed[0]!.edgeIds).toEqual(["e2"]);
     expect(trimmed[0]!.startNodeId).toBe("B");
@@ -1072,7 +1072,7 @@ describe("trimDeadEnds", () => {
       totalLengthMeters: 200,
     };
 
-    const trimmed = trimDeadEnds([chain], graph, nodeDegree);
+    const { chains: trimmed } = trimDeadEnds([chain], graph, nodeDegree);
     expect(trimmed).toHaveLength(1);
     expect(trimmed[0]!.edgeIds).toEqual(["e1"]);
     expect(trimmed[0]!.endNodeId).toBe("C");
@@ -1111,7 +1111,7 @@ describe("trimDeadEnds", () => {
       totalLengthMeters: 400,
     };
 
-    const trimmed = trimDeadEnds([chain], graph, nodeDegree);
+    const { chains: trimmed } = trimDeadEnds([chain], graph, nodeDegree);
     expect(trimmed).toHaveLength(1);
     // All 3 spur edges trimmed from start, only D→E remains
     expect(trimmed[0]!.edgeIds).toEqual(["e4"]);
@@ -1139,7 +1139,7 @@ describe("trimDeadEnds", () => {
       totalLengthMeters: 100,
     };
 
-    const trimmed = trimDeadEnds([chain], graph, nodeDegree);
+    const { chains: trimmed } = trimDeadEnds([chain], graph, nodeDegree);
     expect(trimmed).toHaveLength(0);
   });
 
@@ -1165,7 +1165,7 @@ describe("trimDeadEnds", () => {
       totalLengthMeters: 200,
     };
 
-    const trimmed = trimDeadEnds([chain], graph, nodeDegree);
+    const { chains: trimmed } = trimDeadEnds([chain], graph, nodeDegree);
     expect(trimmed).toHaveLength(1);
     expect(trimmed[0]!.edgeIds).toEqual(["e1", "e2"]);
     expect(trimmed[0]!.totalLengthMeters).toBe(200);
@@ -1201,9 +1201,206 @@ describe("trimDeadEnds", () => {
       totalLengthMeters: 400,
     };
 
-    const trimmed = trimDeadEnds([chain], graph, nodeDegree);
+    const { chains: trimmed } = trimDeadEnds([chain], graph, nodeDegree);
     expect(trimmed).toHaveLength(1);
     expect(trimmed[0]!.edgeIds).toEqual(["g2"]);
     expect(trimmed[0]!.totalLengthMeters).toBe(250);
+  });
+
+  it("rescues fully-consumed dead-end chain that meets destination criteria", () => {
+    // A -- B, both dead ends, but chain is long (1200m) and named → destination
+    const nodes = [makeNode("A", 0, 0), makeNode("B", 0, 0.01)];
+    const edges = [
+      makeEdge("e1", "A", "B", [
+        { lat: 0, lng: 0 },
+        { lat: 0, lng: 0.01 },
+      ], { lengthMeters: 1200, name: "Mountain Pass Road" }),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const nodeDegree = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    const chain: EdgeChain = {
+      edgeIds: ["e1"],
+      startNodeId: "A",
+      endNodeId: "B",
+      totalLengthMeters: 1200,
+    };
+
+    const { chains: trimmed, destinationChains } = trimDeadEnds([chain], graph, nodeDegree);
+    expect(trimmed).toHaveLength(0);
+    expect(destinationChains).toHaveLength(1);
+    expect(destinationChains[0]!.edgeIds).toEqual(["e1"]);
+  });
+
+  it("does not rescue fully-consumed dead-end chain that fails destination criteria", () => {
+    // A -- B, both dead ends, short (200m) unnamed → not a destination
+    const nodes = [makeNode("A", 0, 0), makeNode("B", 0, 0.002)];
+    const edges = [
+      makeEdge("e1", "A", "B", [
+        { lat: 0, lng: 0 },
+        { lat: 0, lng: 0.002 },
+      ], { lengthMeters: 200 }),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const nodeDegree = computeUndirectedDegree(allEdgesAsChains(graph), graph);
+
+    const chain: EdgeChain = {
+      edgeIds: ["e1"],
+      startNodeId: "A",
+      endNodeId: "B",
+      totalLengthMeters: 200,
+    };
+
+    const { chains: trimmed, destinationChains } = trimDeadEnds([chain], graph, nodeDegree);
+    expect(trimmed).toHaveLength(0);
+    expect(destinationChains).toHaveLength(0);
+  });
+});
+
+describe("isDestinationCandidate", () => {
+  it("rejects short chain (400m) regardless of quality signals", () => {
+    const nodes = [makeNode("A", 0, 0), makeNode("B", 0, 0.004)];
+    const edges = [
+      makeEdge("e1", "A", "B", [
+        { lat: 0, lng: 0 },
+        { lat: 0, lng: 0.004 },
+      ], { lengthMeters: 400, name: "Short Road", elevationGain: 50 }),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const chain: EdgeChain = {
+      edgeIds: ["e1"],
+      startNodeId: "A",
+      endNodeId: "B",
+      totalLengthMeters: 400,
+    };
+    expect(isDestinationCandidate(chain, graph)).toBe(false);
+  });
+
+  it("accepts long chain (1km) with 50m elevation gain", () => {
+    // 10 edges of 100m each, each with 5m elevation gain = 50m total
+    const nodes: GraphNode[] = [];
+    const edges: GraphEdge[] = [];
+    const edgeIds: string[] = [];
+    for (let i = 0; i <= 10; i++) {
+      nodes.push(makeNode(`n${i}`, 0, i * 0.001));
+    }
+    for (let i = 0; i < 10; i++) {
+      const id = `e${i}`;
+      edgeIds.push(id);
+      edges.push(
+        makeEdge(id, `n${i}`, `n${i + 1}`, [
+          { lat: 0, lng: i * 0.001 },
+          { lat: 0, lng: (i + 1) * 0.001 },
+        ], { lengthMeters: 100, elevationGain: 5, roadClass: "tertiary" })
+      );
+    }
+    const graph = makeGraph(nodes, edges);
+    const chain: EdgeChain = {
+      edgeIds,
+      startNodeId: "n0",
+      endNodeId: "n10",
+      totalLengthMeters: 1000,
+    };
+    expect(isDestinationCandidate(chain, graph)).toBe(true);
+  });
+
+  it("accepts named 1.2km unclassified road without elevation", () => {
+    const nodes = [makeNode("A", 0, 0), makeNode("B", 0, 0.012)];
+    const edges = [
+      makeEdge("e1", "A", "B", [
+        { lat: 0, lng: 0 },
+        { lat: 0, lng: 0.012 },
+      ], { lengthMeters: 1200, name: "Old Mill Road", roadClass: "unclassified" }),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const chain: EdgeChain = {
+      edgeIds: ["e1"],
+      startNodeId: "A",
+      endNodeId: "B",
+      totalLengthMeters: 1200,
+    };
+    expect(isDestinationCandidate(chain, graph)).toBe(true);
+  });
+
+  it("rejects unnamed 600m residential road without elevation", () => {
+    const nodes = [makeNode("A", 0, 0), makeNode("B", 0, 0.006)];
+    const edges = [
+      makeEdge("e1", "A", "B", [
+        { lat: 0, lng: 0 },
+        { lat: 0, lng: 0.006 },
+      ], { lengthMeters: 600, roadClass: "residential" }),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const chain: EdgeChain = {
+      edgeIds: ["e1"],
+      startNodeId: "A",
+      endNodeId: "B",
+      totalLengthMeters: 600,
+    };
+    expect(isDestinationCandidate(chain, graph)).toBe(false);
+  });
+
+  it("rejects 2km service road (excluded road class)", () => {
+    const nodes = [makeNode("A", 0, 0), makeNode("B", 0, 0.02)];
+    const edges = [
+      makeEdge("e1", "A", "B", [
+        { lat: 0, lng: 0 },
+        { lat: 0, lng: 0.02 },
+      ], { lengthMeters: 2000, roadClass: "service", name: "Parking Loop" }),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const chain: EdgeChain = {
+      edgeIds: ["e1"],
+      startNodeId: "A",
+      endNodeId: "B",
+      totalLengthMeters: 2000,
+    };
+    expect(isDestinationCandidate(chain, graph)).toBe(false);
+  });
+
+  it("accepts 1km tertiary with 50m elevation gain (mountain county road)", () => {
+    // 10 edges of 100m, each with 5m gain
+    const nodes: GraphNode[] = [];
+    const edges: GraphEdge[] = [];
+    const edgeIds: string[] = [];
+    for (let i = 0; i <= 10; i++) {
+      nodes.push(makeNode(`n${i}`, 0, i * 0.001));
+    }
+    for (let i = 0; i < 10; i++) {
+      const id = `e${i}`;
+      edgeIds.push(id);
+      edges.push(
+        makeEdge(id, `n${i}`, `n${i + 1}`, [
+          { lat: 0, lng: i * 0.001 },
+          { lat: 0, lng: (i + 1) * 0.001 },
+        ], { lengthMeters: 100, elevationGain: 5, roadClass: "tertiary" })
+      );
+    }
+    const graph = makeGraph(nodes, edges);
+    const chain: EdgeChain = {
+      edgeIds,
+      startNodeId: "n0",
+      endNodeId: "n10",
+      totalLengthMeters: 1000,
+    };
+    expect(isDestinationCandidate(chain, graph)).toBe(true);
+  });
+
+  it("accepts 900m cycleway (dedicated infra >= 800m)", () => {
+    const nodes = [makeNode("A", 0, 0), makeNode("B", 0, 0.009)];
+    const edges = [
+      makeEdge("e1", "A", "B", [
+        { lat: 0, lng: 0 },
+        { lat: 0, lng: 0.009 },
+      ], { lengthMeters: 900, roadClass: "cycleway" }),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const chain: EdgeChain = {
+      edgeIds: ["e1"],
+      startNodeId: "A",
+      endNodeId: "B",
+      totalLengthMeters: 900,
+    };
+    expect(isDestinationCandidate(chain, graph)).toBe(true);
   });
 });

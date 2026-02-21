@@ -23,7 +23,6 @@ function makeAttributes(
     surfaceClassification: {
       surface: "paved",
       confidence: 0.8,
-      observations: [],
       hasConflict: false,
     },
     infrastructure: {
@@ -512,7 +511,6 @@ describe("getEffectiveMinLength", () => {
           surfaceClassification: {
             surface: "paved",
             confidence: 0.9,
-            observations: [],
             hasConflict: false,
           },
           infrastructure: {
@@ -530,7 +528,6 @@ describe("getEffectiveMinLength", () => {
           surfaceClassification: {
             surface: "unpaved",
             confidence: 0.5,
-            observations: [],
             hasConflict: false,
           },
           infrastructure: {

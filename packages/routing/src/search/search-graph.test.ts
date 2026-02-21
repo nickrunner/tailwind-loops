@@ -20,7 +20,6 @@ function makeNode(id: string, lat: number, lng: number): GraphNode {
 const DEFAULT_SURFACE: SurfaceClassification = {
   surface: "paved",
   confidence: 1,
-  observations: [],
   hasConflict: false,
 };
 

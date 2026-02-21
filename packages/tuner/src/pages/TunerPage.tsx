@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type {
   ActivityType,
-  GenerateRouteResponse,
+  Route,
   CorridorNetworkGeoJson,
 } from "@tailwind-loops/clients-react";
 import {
@@ -9,15 +9,18 @@ import {
   useScoringProfile,
   useProfiles,
   useGenerateRoutes,
+  useCorridorNetwork,
   useSaveConfig,
   useSaveAsProfile,
   useClearAllRegions,
   useRegionCache,
+  useCacheHitZones,
 } from "@tailwind-loops/clients-react";
 import { useScoringParams } from "../hooks/useScoringParams.js";
 import { TopBar } from "../components/organisms/TopBar.js";
 import { Sidebar } from "../components/organisms/Sidebar.js";
 import { TunerMap } from "../components/organisms/TunerMap.js";
+import { RouteStatsPanel } from "../components/organisms/RouteStatsPanel.js";
 import { Footer } from "../components/organisms/Footer.js";
 
 const ALL_CORRIDOR_TYPES = [
@@ -53,6 +56,7 @@ export function TunerPage() {
   const profile = useScoringProfile(profileName || undefined);
   const profileList = useProfiles();
   const generateRoutes = useGenerateRoutes();
+  const corridorNetworkMutation = useCorridorNetwork();
   const saveConfig = useSaveConfig();
   const saveAsProfile = useSaveAsProfile();
   const clearCache = useClearAllRegions();
@@ -68,9 +72,11 @@ export function TunerPage() {
   );
 
   // --- Route state ---
-  const [routeData, setRouteData] = useState<GenerateRouteResponse | null>(null);
+  const [route, setRoute] = useState<Route | null>(null);
   const [corridorNetwork, setCorridorNetwork] = useState<CorridorNetworkGeoJson | null>(null);
   const [activeBucket, setActiveBucket] = useState<[number, number] | null>(null);
+  const maxDistanceMeters = activeBucket ? activeBucket[1] * 1609.34 : undefined;
+  const hitZones = useCacheHitZones(maxDistanceMeters);
 
   // --- Status ---
   const [status, setStatus] = useState("Loading...");
@@ -136,6 +142,10 @@ export function TunerPage() {
     const maxMeters = Math.round(maxMiles * 1609.34);
     setStatus(`Generating ${minMiles}-${maxMiles} mi route...`);
 
+    // Determine which types to exclude based on visibility
+    const excludeTypes = ALL_CORRIDOR_TYPES.filter((t) => visibleTypes[t] === false);
+
+    // Fire route generation
     generateRoutes.mutate(
       {
         activityType: activity,
@@ -146,19 +156,16 @@ export function TunerPage() {
       },
       {
         onSuccess: (data) => {
-          setRouteData(data);
-          if (data.corridorNetwork) {
-            setCorridorNetwork(data.corridorNetwork);
-          }
-          const meta = data._meta;
-          const actualMi = meta.primary?.totalDistanceMeters
-            ? (meta.primary.totalDistanceMeters / 1609.34).toFixed(1)
+          setRoute(data.route);
+          const actualMi = data.route.stats.totalDistanceMeters
+            ? (data.route.stats.totalDistanceMeters / 1609.34).toFixed(1)
             : "?";
           setFooterMessage(
-            `Route: ${actualMi} mi (${minMiles}-${maxMiles} mi range) | ${meta.routeCount} alternative(s) | ${meta.searchTimeMs}ms | ${data.corridorNetwork?._meta?.corridorCount ?? "?"} corridors`,
+            `Route: ${actualMi} mi (${minMiles}-${maxMiles} mi range) | ${data.meta.searchTimeMs}ms`,
           );
           setStatus("Ready");
           regionCache.refetch();
+          hitZones.refetch();
         },
         onError: (err) => {
           setFooterMessage(`Route error: ${err instanceof Error ? err.message : String(err)}`);
@@ -166,38 +173,27 @@ export function TunerPage() {
         },
       },
     );
-  }, [activeBucket, activity, startLatLng, readParams, generateRoutes, regionCache]);
 
-  // --- Compute cache hit zones based on selected distance ---
-  // Shrink each cached bbox by the route's radiusKm to get the effective
-  // area where a starting point would produce a cache hit for that distance.
-  const cacheHitZones = useMemo(() => {
-    if (!activeBucket || !regionCache.data?.entries) return [];
-    const maxMeters = activeBucket[1] * 1609.34;
-    const radiusKm = Math.max(5, Math.ceil(maxMeters / 1000 / 2));
+    // Fire corridor network fetch in parallel
+    corridorNetworkMutation.mutate(
+      {
+        activityType: activity,
+        startCoordinate: startLatLng,
+        maxDistanceMeters: maxMeters,
+        scoringParams: readParams() as never,
+        excludeTypes,
+        includeConnectors: showConnectors,
+      },
+      {
+        onSuccess: (data) => {
+          setCorridorNetwork(data);
+          setFooterMessage((prev) => `${prev} | ${data._meta.corridorCount} corridors`);
+        },
+      },
+    );
+  }, [activeBucket, activity, startLatLng, readParams, generateRoutes, corridorNetworkMutation, regionCache, hitZones, visibleTypes, showConnectors]);
 
-    return regionCache.data.entries
-      .map((entry) => {
-        const latShrink = radiusKm / 111.32;
-        const centerLat = (entry.bbox.minLat + entry.bbox.maxLat) / 2;
-        const lngShrink = radiusKm / (111.32 * Math.cos((centerLat * Math.PI) / 180));
-        return {
-          id: entry.id,
-          sizeMB: entry.sizeMB,
-          networkBounds: entry.bbox,
-          hitBounds: {
-            minLat: entry.bbox.minLat + latShrink,
-            maxLat: entry.bbox.maxLat - latShrink,
-            minLng: entry.bbox.minLng + lngShrink,
-            maxLng: entry.bbox.maxLng - lngShrink,
-          },
-        };
-      })
-      .filter((zone) =>
-        zone.hitBounds.minLat < zone.hitBounds.maxLat &&
-        zone.hitBounds.minLng < zone.hitBounds.maxLng,
-      );
-  }, [activeBucket, regionCache.data]);
+  const cacheHitZones = hitZones.data?.zones ?? [];
 
   // --- Reset ---
   const handleReset = useCallback(() => {
@@ -299,7 +295,7 @@ export function TunerPage() {
         <TunerMap
           startLatLng={startLatLng}
           onStartChange={setStartLatLng}
-          routeData={routeData}
+          route={route}
           corridorNetwork={corridorNetwork}
           visibleTypes={visibleTypes}
           showArrows={showArrows}
@@ -307,6 +303,7 @@ export function TunerPage() {
           showConnectors={showConnectors}
           cacheHitZones={cacheHitZones}
         />
+        {route && <RouteStatsPanel route={route} onClose={() => setRoute(null)} />}
       </div>
       <Footer message={footerMessage} />
     </>

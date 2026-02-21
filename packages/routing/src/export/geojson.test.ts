@@ -6,7 +6,6 @@ function makeSurface(surface: SurfaceClassification["surface"] = "paved", confid
   return {
     surface,
     confidence,
-    observations: [{ source: "osm-highway-inferred", surface, sourceConfidence: 1.0 }],
     hasConflict: false,
   };
 }

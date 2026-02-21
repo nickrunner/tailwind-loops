@@ -2,13 +2,13 @@
  * Extract graph attributes from OSM tags.
  *
  * These functions convert OSM's tag key-value pairs into our
- * domain types (RoadClass, SurfaceObservation, Infrastructure, etc.)
+ * domain types (RoadClass, SurfaceClassification, Infrastructure, etc.)
  */
 
 import type {
   Infrastructure,
   RoadClass,
-  SurfaceObservation,
+  SurfaceClassification,
   SurfaceType
 } from "@tailwind-loops/types";
 import type { OsmTags, RelevantHighway } from "./types.js";
@@ -120,27 +120,27 @@ const INFERRED_SURFACE_CONFIDENCE = 0.3;
 /**
  * Extract surface information from OSM tags.
  *
- * Returns a SurfaceObservation with:
+ * Returns a SurfaceClassification with:
  * - High confidence (0.8) for explicit surface=* tags
  * - Low confidence (0.3) for inference from highway type
  *
  * @param tags - OSM tags object
  * @param roadClass - Already extracted road class (for inference fallback)
- * @returns SurfaceObservation
+ * @returns SurfaceClassification
  */
 export function extractSurface(
   tags: OsmTags | undefined,
   roadClass?: RoadClass
-): SurfaceObservation {
+): SurfaceClassification {
   // Check for explicit surface tag first
   const surfaceTag = tags?.["surface"];
   if (surfaceTag) {
     const surfaceType = SURFACE_TAG_MAP[surfaceTag];
     if (surfaceType) {
       return {
-        source: "osm-surface-tag",
         surface: surfaceType,
-        sourceConfidence: EXPLICIT_SURFACE_CONFIDENCE
+        confidence: EXPLICIT_SURFACE_CONFIDENCE,
+        hasConflict: false,
       };
     }
   }
@@ -150,9 +150,9 @@ export function extractSurface(
   const inferredSurface = HIGHWAY_INFERRED_SURFACE[effectiveRoadClass];
 
   return {
-    source: "osm-highway-inferred",
     surface: inferredSurface ?? "unknown",
-    sourceConfidence: INFERRED_SURFACE_CONFIDENCE
+    confidence: INFERRED_SURFACE_CONFIDENCE,
+    hasConflict: false,
   };
 }
 

@@ -26,7 +26,6 @@ function makeEdge(
       surfaceClassification: {
         surface: "paved",
         confidence: 0.8,
-        observations: [],
         hasConflict: false,
       },
       infrastructure: {
@@ -220,6 +219,7 @@ describe("routeToSegmentFeatures", () => {
         corridor: makeCorridor({ name: "Main St" }),
         reversed: false,
         traversedEdgeIds: ["e1"],
+        geometry: [],
       };
       const route = makeRoute([seg]);
       const features = routeToSegmentFeatures(route, 0, graph);
@@ -253,6 +253,7 @@ describe("routeToSegmentFeatures", () => {
         }),
         reversed: false,
         traversedEdgeIds: ["e1"],
+        geometry: [],
       };
       const route = makeRoute([seg]);
       const features = routeToSegmentFeatures(route, 0, graph);
@@ -269,6 +270,7 @@ describe("routeToSegmentFeatures", () => {
         corridor: makeCorridor(),
         reversed: false,
         traversedEdgeIds: ["missing-edge"],
+        geometry: [],
       };
       const route = makeRoute([seg]);
       const features = routeToSegmentFeatures(route, 0, graph);
@@ -288,6 +290,7 @@ describe("routeToSegmentFeatures", () => {
       const seg: ConnectingSegment = {
         kind: "connecting",
         edges: [edge],
+        geometry: [],
       };
       const route = makeRoute([seg]);
       const features = routeToSegmentFeatures(route, 0, graph);
@@ -314,6 +317,7 @@ describe("routeToSegmentFeatures", () => {
         corridor: makeCorridor(),
         reversed: false,
         traversedEdgeIds: ["e1", "e2"],
+        geometry: [],
       };
       const route = makeRoute([seg]);
       const features = routeToSegmentFeatures(route, 0, graph);
@@ -340,6 +344,7 @@ describe("routeToSegmentFeatures", () => {
         corridor: makeCorridor(),
         reversed: false,
         traversedEdgeIds: ["e1", "e2"],
+        geometry: [],
       };
       const route = makeRoute([seg]);
       const features = routeToSegmentFeatures(route, 0, graph);
@@ -367,6 +372,7 @@ describe("routeToSegmentFeatures", () => {
       const seg: ConnectingSegment = {
         kind: "connecting",
         edges: [e1, e2],
+        geometry: [],
       };
       const route = makeRoute([seg]);
       const features = routeToSegmentFeatures(route, 0, graph);
@@ -392,6 +398,7 @@ describe("routeToSegmentFeatures", () => {
         corridor: makeCorridor(),
         reversed: false,
         traversedEdgeIds: ["e1"],
+        geometry: [],
       };
       const route = makeRoute([seg]);
       const features = routeToSegmentFeatures(route, 0, graph);
@@ -414,6 +421,7 @@ describe("routeToSegmentFeatures", () => {
         corridor: makeCorridor(),
         reversed: false,
         traversedEdgeIds: ["e1"],
+        geometry: [],
       };
       const route = makeRoute([seg]);
       const features = routeToSegmentFeatures(route, 2, graph);
@@ -439,6 +447,7 @@ describe("routeToSegmentFeatures", () => {
         corridor: makeCorridor(),
         reversed: false,
         traversedEdgeIds: ["e1"],
+        geometry: [],
       };
       const route = makeRoute([seg]);
       const features = routeToSegmentFeatures(route, 0, graph);
@@ -489,10 +498,12 @@ describe("routeToSegmentFeatures", () => {
         corridor: makeCorridor({ id: "c1", name: "First St" }),
         reversed: false,
         traversedEdgeIds: ["e1"],
+        geometry: [],
       };
       const seg2: ConnectingSegment = {
         kind: "connecting",
         edges: [e2],
+        geometry: [],
       };
       const route = makeRoute([seg1, seg2]);
       const features = routeToSegmentFeatures(route, 0, graph);

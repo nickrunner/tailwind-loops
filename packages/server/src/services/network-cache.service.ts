@@ -24,7 +24,7 @@ import { join } from "node:path";
 import type { Graph, CorridorNetwork } from "@tailwind-loops/types";
 import type { BoundingBox } from "@tailwind-loops/builder";
 
-import type { CacheEntry, CacheStats } from "../models/responses.js";
+import type { CacheEntry, CacheHitZone, CacheStats } from "../models/responses.js";
 
 /** Metadata stored alongside each cache entry. */
 interface CacheMetadata {
@@ -62,7 +62,10 @@ function coordinateInBbox(
   );
 }
 
-const NETWORK_CACHE_DIR = join(homedir(), ".tailwind-loops", "network-cache");
+const NETWORK_CACHE_DIR = join(
+  process.env["CACHE_DIR"] ?? join(homedir(), ".tailwind-loops"),
+  "network-cache",
+);
 
 function cacheKey(bbox: BoundingBox): string {
   const coords = [
@@ -185,6 +188,35 @@ export class NetworkCacheService {
       }
     }
     return entries;
+  }
+
+  listHitZones(maxDistanceMeters: number): CacheHitZone[] {
+    const radiusKm = Math.max(5, Math.ceil(((maxDistanceMeters / 1000) / Math.PI) * 1.2));
+    const entries = this.listEntries();
+    const zones: CacheHitZone[] = [];
+
+    for (const entry of entries) {
+      const latShrink = radiusKm / 111.32;
+      const centerLat = (entry.bbox.minLat + entry.bbox.maxLat) / 2;
+      const lngShrink = radiusKm / (111.32 * Math.cos((centerLat * Math.PI) / 180));
+      const hitBounds = {
+        minLat: entry.bbox.minLat + latShrink,
+        maxLat: entry.bbox.maxLat - latShrink,
+        minLng: entry.bbox.minLng + lngShrink,
+        maxLng: entry.bbox.maxLng - lngShrink,
+      };
+
+      if (hitBounds.minLat < hitBounds.maxLat && hitBounds.minLng < hitBounds.maxLng) {
+        zones.push({
+          id: entry.id,
+          sizeMB: entry.sizeMB,
+          networkBounds: entry.bbox,
+          hitBounds,
+        });
+      }
+    }
+
+    return zones;
   }
 
   clearAll(): number {

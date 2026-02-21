@@ -105,6 +105,7 @@ export async function buildCorridorsForLocation(
     stats: {
       corridorCount: network.corridors.size,
       connectorCount: network.connectors.size,
+      destinationCount: [...network.corridors.values()].filter((c) => c.isDestination).length,
       averageLengthMeters:
         network.corridors.size > 0 ? totalLength / network.corridors.size : 0,
       totalLengthMeters: totalLength,

@@ -1,6 +1,7 @@
 import type {
   CacheListResponse,
   CacheClearResponse,
+  CacheHitZonesResponse,
 } from "@tailwind-loops/clients-core";
 import { useRegionClient } from "./useClients.js";
 import {
@@ -19,6 +20,17 @@ export function useRegionCache(): Remote<CacheListResponse> {
   return useRemote<CacheListResponse>(
     async () => client.listCache(),
     { keys: REGION_KEYS },
+  );
+}
+
+/** Fetch cache hit zones for a given max route distance */
+export function useCacheHitZones(maxDistanceMeters?: number): Remote<CacheHitZonesResponse> {
+  const client = useRegionClient();
+
+  return useRemote<CacheHitZonesResponse>(
+    async () => client.listHitZones(maxDistanceMeters!),
+    { keys: [...REGION_KEYS, "hit-zones"], params: { maxDistanceMeters } },
+    { enabled: maxDistanceMeters !== undefined },
   );
 }
 

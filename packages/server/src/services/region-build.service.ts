@@ -12,14 +12,17 @@ import {
   buildCorridors,
   bboxFromCenter,
   expandBbox,
+  enrichElevation,
   type BoundingBox,
   type OsmNode,
   type OsmWay,
 } from "@tailwind-loops/builder";
 import type { Graph, CorridorNetwork } from "@tailwind-loops/types";
+import axios from "axios";
 import { NetworkCacheService } from "./network-cache.service.js";
 
-const OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter";
+const OVERPASS_ENDPOINT =
+  process.env["OVERPASS_ENDPOINT"] ?? "https://overpass-api.de/api/interpreter";
 const OVERPASS_MAX_RETRIES = 3;
 const OVERPASS_RETRY_DELAYS = [2000, 5000, 10000];
 const DEFAULT_RADIUS_KM = 5;
@@ -27,20 +30,25 @@ const DEFAULT_RADIUS_KM = 5;
 async function fetchOverpassWithRetry(query: string): Promise<unknown> {
   for (let attempt = 0; attempt <= OVERPASS_MAX_RETRIES; attempt++) {
     try {
-      const res = await fetch(OVERPASS_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `data=${encodeURIComponent(query)}`,
-      });
+      console.log(`[overpass] POST ${OVERPASS_ENDPOINT} (attempt ${attempt + 1})`);
+      const res = await axios.post(
+        OVERPASS_ENDPOINT,
+        `data=${encodeURIComponent(query)}`,
+        {
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          validateStatus: () => true,
+        },
+      );
+      console.log(`[overpass] Response: ${res.status} from ${res.request?.res?.responseUrl ?? res.config.url}`);
 
-      if (res.ok) {
-        return await res.json();
+      if (res.status >= 200 && res.status < 300) {
+        return res.data;
       }
 
       if (res.status >= 429 && attempt < OVERPASS_MAX_RETRIES) {
         const delay = OVERPASS_RETRY_DELAYS[attempt] ?? 10000;
         console.log(
-          `[overpass] ${res.status} ${res.statusText} — retrying in ${delay / 1000}s (attempt ${attempt + 1}/${OVERPASS_MAX_RETRIES})`,
+          `[overpass] ${res.status} ${res.statusText} — retrying in ${delay / 1000}s`,
         );
         await new Promise((r) => setTimeout(r, delay));
         continue;
@@ -54,7 +62,7 @@ async function fetchOverpassWithRetry(query: string): Promise<unknown> {
       ) {
         const delay = OVERPASS_RETRY_DELAYS[attempt] ?? 10000;
         console.log(
-          `[overpass] Network error: ${err} — retrying in ${delay / 1000}s (attempt ${attempt + 1}/${OVERPASS_MAX_RETRIES})`,
+          `[overpass] Network error: ${err} — retrying in ${delay / 1000}s`,
         );
         await new Promise((r) => setTimeout(r, delay));
         continue;
@@ -84,9 +92,11 @@ export class RegionBuildService {
     startCoordinate: { lat: number; lng: number },
     maxDistanceMeters: number,
   ): Promise<{ graph: Graph; network: CorridorNetwork; bbox: BoundingBox }> {
+    // A loop of distance D extends at most D/π from the start (circular case).
+    // Use D/π × 1.2 for a bit of buffer to handle elongated loops.
     const radiusKm = Math.max(
       DEFAULT_RADIUS_KM,
-      Math.ceil((maxDistanceMeters / 1000) / 2),
+      Math.ceil(((maxDistanceMeters / 1000) / Math.PI) * 1.2),
     );
     const startBbox = bboxFromCenter(startCoordinate, radiusKm);
     const bufferedBbox = expandBbox(startBbox, 5);
@@ -134,7 +144,20 @@ export class RegionBuildService {
       `[region] Graph built in ${Date.now() - graphStart}ms: ${graphStats.edgesCount.toLocaleString()} edges`,
     );
 
-    // Skip elevation enrichment (per plan)
+    // Elevation enrichment (opt-in via ELEVATION_TILES_DIR)
+    const elevationTilesDir = process.env["ELEVATION_TILES_DIR"];
+    if (elevationTilesDir) {
+      const elevStart = Date.now();
+      const elevStats = enrichElevation(graph, {
+        dem: { tilesDir: elevationTilesDir },
+      });
+      console.log(
+        `[region] Elevation enriched in ${Date.now() - elevStart}ms: ` +
+          `${elevStats.nodesEnriched.toLocaleString()} nodes, ` +
+          `${elevStats.edgesEnriched.toLocaleString()} edges ` +
+          `(${elevStats.nodesMissing} missing)`,
+      );
+    }
 
     // Build corridors
     const corridorStart = Date.now();

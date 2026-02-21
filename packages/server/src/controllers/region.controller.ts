@@ -1,7 +1,8 @@
-import { Controller, Delete, Get, Path, Route, Tags } from "@tsoa/runtime";
+import { Controller, Delete, Get, Path, Query, Route, Tags } from "@tsoa/runtime";
 import type {
   CacheListResponse,
   CacheClearResponse,
+  CacheHitZonesResponse,
 } from "../models/responses.js";
 import { NetworkCacheService } from "../services/network-cache.service.js";
 
@@ -13,6 +14,15 @@ export class RegionController extends Controller {
   public async listCache(): Promise<CacheListResponse> {
     const cache = new NetworkCacheService();
     return { entries: cache.listEntries() };
+  }
+
+  /** Get cache hit zones for a given max route distance */
+  @Get("hit-zones")
+  public async listHitZones(
+    @Query() maxDistanceMeters: number,
+  ): Promise<CacheHitZonesResponse> {
+    const cache = new NetworkCacheService();
+    return { zones: cache.listHitZones(maxDistanceMeters) };
   }
 
   /** Clear all cached regions */

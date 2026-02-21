@@ -10,3 +10,4 @@ export {
   type RouteGeoJsonFeature,
   type RouteGeoJsonCollection,
 } from "./route-geojson.js";
+export { buildRouteElevationProfile } from "./route-elevation.js";

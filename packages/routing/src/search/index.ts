@@ -10,7 +10,7 @@ import type {
   CorridorNetwork,
   ActivityType,
   LoopSearchParams,
-  RouteAlternatives,
+  Route,
 } from "@tailwind-loops/types";
 import { buildSearchGraph } from "./search-graph.js";
 import { snapToNode } from "./snap.js";
@@ -29,14 +29,14 @@ export { candidateToRoute } from "./route-builder.js";
  * @param graph - Underlying street graph (for node coordinates and connector edges)
  * @param activityType - Activity type (determines which corridor scores to use)
  * @param params - Loop search parameters (start point, target distance, etc.)
- * @returns Route alternatives (primary + alternatives), or null if no routes found
+ * @returns Best route, or null if no routes found
  */
 export function generateLoopRoutes(
   network: CorridorNetwork,
   graph: Graph,
   activityType: ActivityType,
   params: LoopSearchParams,
-): RouteAlternatives | null {
+): Route | null {
   const t0 = performance.now();
 
   // 1. Build search graph from scored network
@@ -61,23 +61,15 @@ export function generateLoopRoutes(
     maxDistance: params.maxDistanceMeters,
     preferredDirection,
     turnFrequency: params.turnFrequency,
-    maxAlternatives: params.maxAlternatives,
   });
   console.log(`[route] Beam search: ${candidates.length} routes found (${(performance.now() - t1).toFixed(0)}ms)`);
 
   if (candidates.length === 0) return null;
 
-  // 4. Convert candidates to Route objects
-  const routes = candidates.map((c, i) => candidateToRoute(c, network, graph, i));
-
-  for (const route of routes) {
-    console.log(`[route]   ${route.id}: ${(route.stats.totalDistanceMeters / 1609.34).toFixed(1)}mi, score=${route.score.toFixed(3)}, ${route.segments.length} segments`);
-  }
-
+  // 4. Convert best candidate to Route
+  const route = candidateToRoute(candidates[0]!, network, graph, 0);
+  console.log(`[route]   ${route.id}: ${(route.stats.totalDistanceMeters / 1609.34).toFixed(1)}mi, score=${route.score.toFixed(3)}, ${route.segments.length} segments`);
   console.log(`[route] Total: ${(performance.now() - t0).toFixed(0)}ms`);
 
-  return {
-    primary: routes[0]!,
-    alternatives: routes.slice(1),
-  };
+  return route;
 }

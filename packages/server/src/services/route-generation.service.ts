@@ -1,7 +1,7 @@
 /**
- * Route generation service — scoring + beam search + GeoJSON conversion.
+ * Route generation service — scoring + beam search.
  *
- * Takes a built corridor network and produces route GeoJSON.
+ * Takes a built corridor network and produces a Route.
  * Extracted from packages/tuner/src/server.ts
  */
 
@@ -9,19 +9,19 @@ import type {
   Graph,
   CorridorNetwork,
   ActivityType,
-  Route,
   LoopSearchParams,
+  Route,
+  RouteSegment,
 } from "@tailwind-loops/types";
 import {
   scoreCorridorWithParams,
   generateLoopRoutes,
-  corridorNetworkToGeoJson,
-  routeToSegmentFeatures,
   loadBaseConfig,
   loadProfileConfig,
   type ScoringParams,
 } from "@tailwind-loops/routing";
 import type { GenerateRouteRequest } from "../models/requests.js";
+import type { GenerateRouteResponse } from "../models/responses.js";
 import { RegionBuildService } from "./region-build.service.js";
 
 export class RouteGenerationService {
@@ -33,11 +33,9 @@ export class RouteGenerationService {
 
   /**
    * Generate loop routes from a request.
-   * Handles the full pipeline: resolve scoring params → build region → score → search → GeoJSON.
+   * Handles the full pipeline: resolve scoring params → build region → score → search → return Route.
    */
-  async generate(
-    req: GenerateRouteRequest,
-  ): Promise<{ type: string; features: unknown[]; _meta: unknown; corridorNetwork?: unknown }> {
+  async generate(req: GenerateRouteRequest): Promise<GenerateRouteResponse> {
     const activityType = req.activityType as ActivityType;
 
     // Resolve scoring params: explicit > profile > base defaults
@@ -83,7 +81,6 @@ export class RouteGenerationService {
       maxDistanceMeters: req.maxDistanceMeters,
       preferredDirection: req.preferredDirection,
       turnFrequency: req.turnFrequency,
-      maxAlternatives: req.maxAlternatives,
     };
 
     const result = generateLoopRoutes(
@@ -101,45 +98,48 @@ export class RouteGenerationService {
 
     const elapsed = performance.now() - start;
 
-    // Convert to per-segment GeoJSON
-    const features: unknown[] = [];
-    for (const [idx, route] of [result.primary, ...result.alternatives].entries()) {
-      features.push(...routeToSegmentFeatures(route, idx, graph));
-    }
-
-    // Build corridor network GeoJSON filtered by activity type
-    const corridorGeoJson = corridorNetworkToGeoJson(network, {
-      includeConnectors: false,
-      scoreActivity: activityType,
-    });
-    const excludedTypes = new Set(["path", "trail"]);
-    const excludedRoadClasses = new Set(["service", "track", "footway"]);
-    const filteredCorridorFeatures = (corridorGeoJson.features as unknown as Record<string, unknown>[]).filter((f) => {
-      const props = f["properties"] as Record<string, unknown> | undefined;
-      const ct = props?.["corridorType"] as string | undefined;
-      const surface = props?.["predominantSurface"] as string | undefined;
-      const roadClass = props?.["roadClass"] as string | undefined;
-      if (ct && excludedTypes.has(ct)) return false;
-      if (activityType === "road-cycling" && surface === "unpaved") return false;
-      if (activityType === "road-cycling" && roadClass && excludedRoadClasses.has(roadClass)) return false;
-      return true;
-    });
-
     return {
-      type: "FeatureCollection",
-      features,
-      _meta: {
-        routeCount: 1 + result.alternatives.length,
+      route: toRouteResponse(result, activityType),
+      meta: {
         searchTimeMs: Math.round(elapsed * 100) / 100,
-        primary: result.primary.stats,
-      },
-      corridorNetwork: {
-        type: "FeatureCollection",
-        features: filteredCorridorFeatures,
-        _meta: { corridorCount: filteredCorridorFeatures.length },
       },
     };
   }
+}
+
+/**
+ * Map internal Route → client-facing response, stripping graph plumbing
+ * (edgeIds, startNodeId, endNodeId, oneWay, isDestination, ConnectingSegment.edges).
+ */
+function toRouteResponse(route: Route, activityType: ActivityType) {
+  return {
+    id: route.id,
+    segments: route.segments.map((seg) => toSegmentResponse(seg, activityType)),
+    stats: route.stats,
+    geometry: route.geometry,
+    score: route.score,
+  };
+}
+
+function toSegmentResponse(seg: RouteSegment, activityType: ActivityType) {
+  if (seg.kind === "corridor") {
+    return {
+      kind: "corridor" as const,
+      corridor: {
+        id: seg.corridor.id,
+        name: seg.corridor.name ?? null,
+        type: seg.corridor.type,
+        attributes: seg.corridor.attributes,
+        score: seg.corridor.scores?.[activityType] ?? null,
+      },
+      reversed: seg.reversed,
+      geometry: seg.geometry,
+    };
+  }
+  return {
+    kind: "connecting" as const,
+    geometry: seg.geometry,
+  };
 }
 
 export class RouteNotFoundError extends Error {

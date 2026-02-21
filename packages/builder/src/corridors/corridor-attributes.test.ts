@@ -23,7 +23,6 @@ function makeAttributes(
     surfaceClassification: {
       surface: "paved",
       confidence: 0.8,
-      observations: [],
       hasConflict: false,
     },
     infrastructure: {
@@ -120,11 +119,11 @@ describe("aggregateAttributes", () => {
       [
         makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
           lengthMeters: 50,
-          surfaceClassification: { surface: "unpaved", confidence: 0.7, observations: [], hasConflict: false },
+          surfaceClassification: { surface: "unpaved", confidence: 0.7, hasConflict: false },
         }),
         makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
           lengthMeters: 200,
-          surfaceClassification: { surface: "paved", confidence: 0.9, observations: [], hasConflict: false },
+          surfaceClassification: { surface: "paved", confidence: 0.9, hasConflict: false },
         }),
       ]
     );
@@ -139,11 +138,11 @@ describe("aggregateAttributes", () => {
       [
         makeEdge("e1", "a", "b", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], {
           lengthMeters: 100,
-          surfaceClassification: { surface: "paved", confidence: 0.6, observations: [], hasConflict: false },
+          surfaceClassification: { surface: "paved", confidence: 0.6, hasConflict: false },
         }),
         makeEdge("e2", "b", "c", [{ lat: 0, lng: 0.001 }, { lat: 0, lng: 0.002 }], {
           lengthMeters: 100,
-          surfaceClassification: { surface: "paved", confidence: 1.0, observations: [], hasConflict: false },
+          surfaceClassification: { surface: "paved", confidence: 1.0, hasConflict: false },
         }),
       ]
     );

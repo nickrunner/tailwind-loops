@@ -17,12 +17,16 @@ export interface CorridorSegment {
   reversed: boolean;
   /** Graph edge IDs actually traversed (may be a subset of corridor.edgeIds) */
   traversedEdgeIds: string[];
+  /** Ordered coordinates for rendering this segment */
+  geometry: Coordinate[];
 }
 
 /** A segment that is a connecting edge (not part of a corridor) */
 export interface ConnectingSegment {
   kind: "connecting";
   edges: GraphEdge[];
+  /** Ordered coordinates for rendering this segment */
+  geometry: Coordinate[];
 }
 
 /** A segment of the route */
@@ -65,14 +69,6 @@ export interface Route {
   score: number;
 }
 
-/** Multiple route alternatives */
-export interface RouteAlternatives {
-  /** The primary/recommended route */
-  primary: Route;
-  /** Alternative routes (if requested) */
-  alternatives: Route[];
-}
-
 /** Parameters for loop route generation */
 export interface LoopSearchParams {
   /** Starting point for the loop */
@@ -85,6 +81,4 @@ export interface LoopSearchParams {
   preferredDirection?: number;
   /** How many corridor transitions to prefer */
   turnFrequency?: "minimal" | "moderate" | "frequent";
-  /** Maximum number of alternative routes to return (default 3) */
-  maxAlternatives?: number;
 }

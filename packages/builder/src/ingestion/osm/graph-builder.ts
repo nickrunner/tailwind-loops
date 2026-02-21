@@ -11,9 +11,7 @@ import type {
   Graph,
   GraphEdge,
   GraphNode,
-  SurfaceClassification,
 } from "@tailwind-loops/types";
-import { fuseSurfaceObservations } from "../index.js";
 import type { OsmNode, OsmWay } from "./types.js";
 import {
   extractInfrastructure,
@@ -134,8 +132,7 @@ export async function buildGraphFromOsm(
   // Process each way
   for (const way of osmWays) {
     const roadClass = extractRoadClass(way.tags);
-    const surfaceObs = extractSurface(way.tags, roadClass);
-    const surfaceClassification = fuseSurfaceObservations([surfaceObs]);
+    const surfaceClassification = extractSurface(way.tags, roadClass);
     const infrastructure = extractInfrastructure(way.tags);
     const isOneWay = extractOneWay(way.tags);
     const isReverse = isReverseOneWay(way.tags);

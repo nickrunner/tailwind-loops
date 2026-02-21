@@ -10,6 +10,7 @@
   "dependencies": {
     "@tailwind-loops/clients-core": "workspace:*",
     "@tailwind-loops/clients-react": "workspace:*",
+    "@tailwind-loops/routing": "workspace:*",
     "leaflet": "^1.9.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

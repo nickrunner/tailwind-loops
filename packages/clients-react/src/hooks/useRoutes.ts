@@ -1,10 +1,9 @@
 import type {
   GenerateRouteRequest,
   GenerateRouteResponse,
-  CacheClearResponse,
 } from "@tailwind-loops/clients-core";
 import { useRouteClient } from "./useClients.js";
-import { useDataMutation, useQueryInvalidation } from "../utils/query.utils.js";
+import { useDataMutation } from "../utils/query.utils.js";
 
 const ROUTE_KEYS = ["routes"];
 
@@ -14,7 +13,7 @@ const ROUTE_KEYS = ["routes"];
  * Usage:
  *   const generateRoutes = useGenerateRoutes();
  *   generateRoutes.mutate({ activityType: "road-cycling", ... });
- *   // generateRoutes.data — the GeoJSON response
+ *   // generateRoutes.data — the route response
  *   // generateRoutes.isPending — loading state
  */
 export function useGenerateRoutes() {

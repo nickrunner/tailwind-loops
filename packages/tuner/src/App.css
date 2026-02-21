@@ -187,6 +187,96 @@ body {
 }
 .toggle-btn:hover { background: #533483; }
 
+/* Route Stats Panel (right sidebar) */
+.route-stats-panel {
+  width: 300px;
+  overflow-y: auto;
+  padding: 12px;
+  background: #16213e;
+  border-left: 1px solid #0f3460;
+  flex-shrink: 0;
+}
+.rsp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.rsp-header h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin: 0;
+}
+.rsp-close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.rsp-close:hover { color: #e0e0e0; }
+.rsp-section {
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #0f3460;
+}
+.rsp-section:last-child { border-bottom: none; }
+.rsp-section h3 {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #888;
+  margin: 0 0 6px;
+  letter-spacing: 0.5px;
+}
+
+/* Stat row */
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 3px 0;
+  font-size: 12px;
+}
+.stat-label { color: #aaa; }
+.stat-value { color: #e0e0e0; font-family: monospace; font-size: 11px; }
+
+/* Surface breakdown bar */
+.surface-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 4px 0;
+  background: #333;
+}
+.surface-paved { background: #2563eb; }
+.surface-unpaved { background: #d97706; }
+.surface-unknown { background: #555; }
+.surface-legend {
+  font-size: 10px;
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+.surface-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 6px;
+}
+.surface-dot:first-child { margin-left: 0; }
+.surface-paved-dot { background: #2563eb; }
+.surface-unpaved-dot { background: #d97706; }
+.surface-unknown-dot { background: #555; }
+
 /* Score popup (Leaflet) */
 .score-popup {
   font-family: monospace;

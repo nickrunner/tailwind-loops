@@ -109,6 +109,9 @@ importers:
       '@tsoa/runtime':
         specifier: ^6.6.0
         version: 6.6.0
+      axios:
+        specifier: ^1.13.5
+        version: 1.13.5
       cors:
         specifier: ^2.8.5
         version: 2.8.6
@@ -143,6 +146,9 @@ importers:
       '@tailwind-loops/clients-react':
         specifier: workspace:*
         version: link:../clients-react
+      '@tailwind-loops/routing':
+        specifier: workspace:*
+        version: link:../routing
       leaflet:
         specifier: ^1.9.4
         version: 1.9.4

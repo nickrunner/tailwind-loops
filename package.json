@@ -8,7 +8,11 @@
     "test": "pnpm -r test",
     "tuner": "pnpm --filter @tailwind-loops/tuner dev",
     "serve": "pnpm --filter @tailwind-loops/server start",
-    "dev": "pnpm --filter @tailwind-loops/server --filter @tailwind-loops/tuner -r --parallel dev"
+    "dev": "pnpm --filter @tailwind-loops/server --filter @tailwind-loops/tuner -r --parallel dev",
+    "dev:local": "PORT=4000 OVERPASS_ENDPOINT=http://localhost:8888/api/interpreter ELEVATION_TILES_DIR=$PWD/data/elevation API_URL=http://localhost:4000 pnpm dev",
+    "overpass:up": "docker compose up overpass -d",
+    "overpass:down": "docker compose down",
+    "overpass:logs": "docker compose logs -f overpass"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",

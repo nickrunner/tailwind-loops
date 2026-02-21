@@ -51,30 +51,12 @@ export type SurfaceType =
   | "unpaved"
   | "unknown";
 
-/** Data sources for surface information */
-export type SurfaceDataSource =
-  | "osm-surface-tag" // Explicit OSM surface=* tag
-  | "osm-highway-inferred" // Inferred from highway type
-  | "gravelmap" // Gravelmap.com crowd-sourced data
-  | "strava-heatmap" // Strava usage patterns by bike type
-  | "user-report" // User-submitted correction
-  | "satellite-ml"; // ML classification from satellite imagery
-
-/** A surface observation from a single data source */
-export interface SurfaceObservation {
-  source: SurfaceDataSource;
-  surface: SurfaceType;
-  /** When this observation was recorded (if known) */
-  observedAt?: Date;
-  /** Source-specific confidence (0-1) */
-  sourceConfidence: number;
-}
-
 /**
  * Surface classification with confidence scoring.
  *
  * Surface type is the most critical attribute for cycling routing.
- * We fuse multiple data sources to build confidence in classifications.
+ * Multi-source observations live in EdgeEnrichment; this type holds
+ * only the resolved classification.
  */
 export interface SurfaceClassification {
   /** The resolved surface type */
@@ -87,8 +69,6 @@ export interface SurfaceClassification {
    * - 0.8-1.0: High-quality source or strong multi-source agreement
    */
   confidence: number;
-  /** All observations that contributed to this classification */
-  observations: SurfaceObservation[];
   /** Flag if sources conflict (manual review may be needed) */
   hasConflict: boolean;
 }

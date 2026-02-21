@@ -20,7 +20,6 @@ function makeAttributes(
     surfaceClassification: {
       surface: "paved",
       confidence: 0.8,
-      observations: [],
       hasConflict: false,
     },
     infrastructure: {
@@ -852,7 +851,6 @@ describe("buildCorridors", () => {
               surfaceClassification: {
                 surface: isEven ? "paved" : "unpaved",
                 confidence: 0.8,
-                observations: [],
                 hasConflict: false,
               },
               infrastructure: {
@@ -882,6 +880,107 @@ describe("buildCorridors", () => {
         edgeIds.some((id) => c.edgeIds.includes(id))
       );
       expect(junkCorr).toBeUndefined();
+    });
+  });
+
+  describe("destination corridors", () => {
+    it("creates destination corridor with isDestination: true for qualifying dead end", async () => {
+      // Build a cycle backbone (survives 2-core) with a long named dead-end spur
+      const nodes: GraphNode[] = [
+        // Cycle: B -- C -- D -- B
+        makeNode("B", 0, 0),
+        makeNode("C", 0, 0.001),
+        makeNode("D", 0.001, 0.0005),
+        // Dead-end spur: B -- S1 -- S2 -- S3 (1200m total, named, goes west)
+        makeNode("S1", 0, -0.004),
+        makeNode("S2", 0, -0.008),
+        makeNode("S3", 0, -0.012),
+      ];
+      const edges: GraphEdge[] = [
+        // Cycle edges
+        makeEdge("cyc1", "B", "C", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], { lengthMeters: 100 }),
+        makeEdge("cyc2", "C", "D", [{ lat: 0, lng: 0.001 }, { lat: 0.001, lng: 0.0005 }], { lengthMeters: 100 }),
+        makeEdge("cyc3", "D", "B", [{ lat: 0.001, lng: 0.0005 }, { lat: 0, lng: 0 }], { lengthMeters: 100 }),
+        // Dead-end spur (going west from B, 1200m named road)
+        makeEdge("spur1", "B", "S1", [{ lat: 0, lng: 0 }, { lat: 0, lng: -0.004 }], {
+          lengthMeters: 400, name: "Mountain View Road", roadClass: "unclassified",
+        }),
+        makeEdge("spur2", "S1", "S2", [{ lat: 0, lng: -0.004 }, { lat: 0, lng: -0.008 }], {
+          lengthMeters: 400, name: "Mountain View Road", roadClass: "unclassified",
+        }),
+        makeEdge("spur3", "S2", "S3", [{ lat: 0, lng: -0.008 }, { lat: 0, lng: -0.012 }], {
+          lengthMeters: 400, name: "Mountain View Road", roadClass: "unclassified",
+        }),
+      ];
+      const graph = makeGraph(nodes, edges);
+      const result = await buildCorridors(graph, { minLengthMeters: 200 });
+
+      // The spur should be rescued as a destination corridor
+      const corridors = [...result.network.corridors.values()];
+      const destCorr = corridors.find((c) => c.isDestination === true);
+      expect(destCorr).toBeDefined();
+      expect(destCorr!.edgeIds).toEqual(expect.arrayContaining(["spur1", "spur2", "spur3"]));
+      expect(result.stats.destinationCount).toBe(1);
+    });
+
+    it("destination corridor connector survives sanitization", async () => {
+      // Same setup as above — the connector between cycle and destination spur should survive
+      const nodes: GraphNode[] = [
+        makeNode("B", 0, 0),
+        makeNode("C", 0, 0.001),
+        makeNode("D", 0.001, 0.0005),
+        makeNode("S1", 0, -0.004),
+        makeNode("S2", 0, -0.008),
+        makeNode("S3", 0, -0.012),
+      ];
+      const edges: GraphEdge[] = [
+        makeEdge("cyc1", "B", "C", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], { lengthMeters: 100 }),
+        makeEdge("cyc2", "C", "D", [{ lat: 0, lng: 0.001 }, { lat: 0.001, lng: 0.0005 }], { lengthMeters: 100 }),
+        makeEdge("cyc3", "D", "B", [{ lat: 0.001, lng: 0.0005 }, { lat: 0, lng: 0 }], { lengthMeters: 100 }),
+        makeEdge("spur1", "B", "S1", [{ lat: 0, lng: 0 }, { lat: 0, lng: -0.004 }], {
+          lengthMeters: 400, name: "Mountain View Road", roadClass: "unclassified",
+        }),
+        makeEdge("spur2", "S1", "S2", [{ lat: 0, lng: -0.004 }, { lat: 0, lng: -0.008 }], {
+          lengthMeters: 400, name: "Mountain View Road", roadClass: "unclassified",
+        }),
+        makeEdge("spur3", "S2", "S3", [{ lat: 0, lng: -0.008 }, { lat: 0, lng: -0.012 }], {
+          lengthMeters: 400, name: "Mountain View Road", roadClass: "unclassified",
+        }),
+      ];
+      const graph = makeGraph(nodes, edges);
+      const result = await buildCorridors(graph, { minLengthMeters: 200 });
+
+      // The destination corridor should be adjacent to something (connected via adjacency)
+      const destCorr = [...result.network.corridors.values()].find((c) => c.isDestination === true);
+      expect(destCorr).toBeDefined();
+      const adj = result.network.adjacency.get(destCorr!.id) ?? [];
+      expect(adj.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("short cul-de-sac is still removed (not a destination)", async () => {
+      // Cycle backbone with a short unnamed dead-end spur (200m)
+      const nodes: GraphNode[] = [
+        makeNode("B", 0, 0),
+        makeNode("C", 0, 0.001),
+        makeNode("D", 0.001, 0.0005),
+        makeNode("S1", 0, -0.002),
+      ];
+      const edges: GraphEdge[] = [
+        makeEdge("cyc1", "B", "C", [{ lat: 0, lng: 0 }, { lat: 0, lng: 0.001 }], { lengthMeters: 100 }),
+        makeEdge("cyc2", "C", "D", [{ lat: 0, lng: 0.001 }, { lat: 0.001, lng: 0.0005 }], { lengthMeters: 100 }),
+        makeEdge("cyc3", "D", "B", [{ lat: 0.001, lng: 0.0005 }, { lat: 0, lng: 0 }], { lengthMeters: 100 }),
+        // Short unnamed spur (200m residential) — should be trimmed
+        makeEdge("spur1", "B", "S1", [{ lat: 0, lng: 0 }, { lat: 0, lng: -0.002 }], {
+          lengthMeters: 200, roadClass: "residential",
+        }),
+      ];
+      const graph = makeGraph(nodes, edges);
+      const result = await buildCorridors(graph, { minLengthMeters: 200 });
+
+      const corridors = [...result.network.corridors.values()];
+      const destCorr = corridors.find((c) => c.isDestination === true);
+      expect(destCorr).toBeUndefined();
+      expect(result.stats.destinationCount).toBe(0);
     });
   });
 });

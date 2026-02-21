@@ -13,7 +13,6 @@ import type {
   PointDetection,
   SurfaceType,
 } from "@tailwind-loops/types";
-import { fuseSurfaceObservations } from "../ingestion/index.js";
 
 // ---------------------------------------------------------------------------
 // Fusion result
@@ -36,41 +35,57 @@ export interface FusionStrategy<A extends EnrichableAttribute> {
 }
 
 // ---------------------------------------------------------------------------
-// Surface fusion (wraps existing fuseSurfaceObservations)
+// Surface fusion (weighted voting)
 // ---------------------------------------------------------------------------
-
-const SURFACE_SOURCE_TO_LEGACY: Partial<Record<DataSource, import("@tailwind-loops/types").SurfaceDataSource>> = {
-  "osm-tag": "osm-surface-tag",
-  "osm-inferred": "osm-highway-inferred",
-  "gravelmap": "gravelmap",
-  "user-report": "user-report",
-};
 
 export class SurfaceFusionStrategy implements FusionStrategy<"surface"> {
   readonly attribute = "surface" as const;
   readonly sourceWeights: Partial<Record<DataSource, number>> = {
     "gravelmap": 0.9,
+    "user-report": 0.85,
     "osm-tag": 0.7,
     "mapillary": 0.65,
     "osm-inferred": 0.2,
   };
 
   fuse(observations: Observation<"surface">[]): FusionResult<"surface"> {
-    // Convert to legacy SurfaceObservation and delegate
-    const legacyObs = observations.map((obs) => ({
-      source: SURFACE_SOURCE_TO_LEGACY[obs.source] ?? ("osm-surface-tag" as const),
-      surface: obs.value as SurfaceType,
-      sourceConfidence: obs.sourceConfidence,
-      observedAt: obs.observedAt,
-    }));
+    if (observations.length === 0) {
+      return { value: "unknown", confidence: 0, hasConflict: false };
+    }
 
-    const result = fuseSurfaceObservations(legacyObs);
+    // Weighted voting by surface type
+    const votes = new Map<SurfaceType, number>();
+    for (const obs of observations) {
+      const weight = (this.sourceWeights[obs.source] ?? 0.5) * obs.sourceConfidence;
+      const surface = obs.value as SurfaceType;
+      votes.set(surface, (votes.get(surface) ?? 0) + weight);
+    }
 
-    return {
-      value: result.surface,
-      confidence: result.confidence,
-      hasConflict: result.hasConflict,
-    };
+    // Find winning surface type
+    let maxVotes = 0;
+    let winner: SurfaceType = "unknown";
+    for (const [surface, voteWeight] of votes) {
+      if (voteWeight > maxVotes) {
+        maxVotes = voteWeight;
+        winner = surface;
+      }
+    }
+
+    // Conflict: multiple surfaces with significant votes
+    const significantVotes = [...votes.entries()].filter(
+      ([, v]) => v > maxVotes * 0.15
+    );
+    const hasConflict = significantVotes.length > 1;
+
+    // Confidence based on agreement, source count, and quality
+    const totalWeight = [...votes.values()].reduce((a, b) => a + b, 0);
+    const agreement = maxVotes / totalWeight;
+    const confidence = Math.min(
+      0.95,
+      agreement * 0.5 + Math.min(observations.length / 3, 1) * 0.3 + (maxVotes / 2) * 0.2
+    );
+
+    return { value: winner, confidence, hasConflict };
   }
 }
 

@@ -28,8 +28,6 @@ export interface GenerateRouteRequest {
   /** Preferred compass bearing for outward direction (0-360) */
   preferredDirection?: number;
   turnFrequency?: TurnFrequency;
-  /** Maximum number of alternative routes (default 3) */
-  maxAlternatives?: number;
   /** Full scoring params override (takes precedence over profileName) */
   scoringParams?: Record<string, unknown>;
   /** Named profile to load (ignored if scoringParams provided) */
@@ -45,35 +43,88 @@ export interface RouteStats {
   flowScore: number;
   elevationGainMeters?: number;
   elevationLossMeters?: number;
+  maxGradePercent?: number;
 }
 
-export interface RouteFeatureProperties {
-  routeIndex: number;
-  isPrimary: boolean;
-  isSegment: boolean;
-  score?: number;
-  distanceMeters?: number;
-  distanceKm?: number;
-  totalStops?: number;
-  flowScore?: number;
-  segmentCount?: number;
-  elevationGain?: number | null;
-  elevationLoss?: number | null;
-  surface?: string;
-  corridorName?: string | null;
-  corridorType?: string;
-  stroke: string;
-  "stroke-width": number;
-  "stroke-opacity": number;
+export interface CorridorScore {
+  overall: number;
+  flow: number;
+  safety: number;
+  surface: number;
+  character: number;
+  scenic: number;
+  elevation: number;
 }
 
-export interface GeoJsonFeature {
-  type: "Feature";
-  geometry: {
-    type: "LineString";
-    coordinates: [number, number][];
+export interface CorridorAttributes {
+  lengthMeters: number;
+  predominantRoadClass: string;
+  predominantSurface: string;
+  surfaceConfidence: number;
+  averageSpeedLimit?: number;
+  stopDensityPerKm: number;
+  crossingDensityPerKm: number;
+  bicycleInfraContinuity: number;
+  pedestrianPathContinuity: number;
+  separationContinuity: number;
+  turnsCount: number;
+  trafficCalmingContinuity: number;
+  scenicScore: number;
+  totalElevationGain?: number;
+  totalElevationLoss?: number;
+  averageGrade?: number;
+  maxGrade?: number;
+  elevationProfile?: number[];
+  hillinessIndex?: number;
+}
+
+export interface CorridorSegment {
+  kind: "corridor";
+  corridor: {
+    id: string;
+    name: string | null;
+    type: string;
+    attributes: CorridorAttributes;
+    score: CorridorScore | null;
   };
-  properties: RouteFeatureProperties;
+  reversed: boolean;
+  geometry: Coordinate[];
+}
+
+export interface ConnectingSegment {
+  kind: "connecting";
+  geometry: Coordinate[];
+}
+
+export type RouteSegment = CorridorSegment | ConnectingSegment;
+
+export interface Route {
+  id: string;
+  segments: RouteSegment[];
+  stats: RouteStats;
+  geometry: Coordinate[];
+  score: number;
+}
+
+export interface GenerateRouteResponse {
+  route: Route;
+  meta: {
+    searchTimeMs: number;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Corridor Network
+// ---------------------------------------------------------------------------
+
+export interface CorridorNetworkRequest {
+  activityType: ActivityType;
+  startCoordinate: Coordinate;
+  maxDistanceMeters: number;
+  scoringParams?: Record<string, unknown>;
+  profileName?: string;
+  excludeTypes?: string[];
+  includeConnectors?: boolean;
 }
 
 export interface CorridorNetworkGeoJson {
@@ -82,17 +133,6 @@ export interface CorridorNetworkGeoJson {
   _meta: {
     corridorCount: number;
   };
-}
-
-export interface GenerateRouteResponse {
-  type: "FeatureCollection";
-  features: GeoJsonFeature[];
-  _meta: {
-    routeCount: number;
-    searchTimeMs: number;
-    primary: RouteStats;
-  };
-  corridorNetwork?: CorridorNetworkGeoJson;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,6 +174,17 @@ export interface CacheListResponse {
 
 export interface CacheClearResponse {
   cleared: number;
+}
+
+export interface CacheHitZone {
+  id: string;
+  sizeMB: number;
+  networkBounds: BoundingBox;
+  hitBounds: BoundingBox;
+}
+
+export interface CacheHitZonesResponse {
+  zones: CacheHitZone[];
 }
 
 // ---------------------------------------------------------------------------

@@ -61,6 +61,7 @@ export interface CorridorBuildResult {
   stats: {
     corridorCount: number;
     connectorCount: number;
+    destinationCount: number;
     averageLengthMeters: number;
     totalLengthMeters: number;
     buildTimeMs: number;
@@ -98,14 +99,18 @@ export async function buildCorridors(
   // Each pass: compute degree from surviving chain edges, trim, repeat.
   // Discarding a dead-end chain (e.g. a service road) may expose new dead ends
   // on adjacent chains, so we iterate until stable.
+  // Dead-end chains that qualify as destinations are rescued across iterations.
   let chains = rawChains;
   let prevEdgeCount = -1;
+  const allDestinationChains: import("./chain-builder.js").EdgeChain[] = [];
   while (true) {
     const totalEdges = chains.reduce((s, c) => s + c.edgeIds.length, 0);
     if (totalEdges === prevEdgeCount) break;
     prevEdgeCount = totalEdges;
     const nodeDegree = computeUndirectedDegree(chains, graph);
-    chains = trimDeadEnds(chains, graph, nodeDegree);
+    const trimResult = trimDeadEnds(chains, graph, nodeDegree);
+    chains = trimResult.chains;
+    allDestinationChains.push(...trimResult.destinationChains);
   }
 
   // Step 2: Separate by length threshold
@@ -196,6 +201,46 @@ export async function buildCorridors(
     }
   }
 
+  // Step 3b: Build destination corridors from rescued dead-end chains.
+  // These bypass the normal length threshold — they already passed
+  // isDestinationCandidate criteria in trimDeadEnds.
+  for (const chain of allDestinationChains) {
+    const id = `corridor-${corridorIdx++}`;
+    const attributes = aggregateAttributes(chain.edgeIds, graph);
+    const name = deriveName(chain.edgeIds, graph);
+    const geometry = buildCorridorGeometry(chain.edgeIds, graph);
+    const type = classifyCorridor({
+      id,
+      name,
+      type: "mixed",
+      attributes,
+      edgeIds: chain.edgeIds,
+      startNodeId: chain.startNodeId,
+      endNodeId: chain.endNodeId,
+      geometry,
+      oneWay: false,
+    });
+
+    const firstEdge = graph.edges.get(chain.edgeIds[0]!);
+    const isOneWay = firstEdge?.attributes.oneWay ?? false;
+
+    const corridor: Corridor = {
+      id,
+      name,
+      type,
+      attributes,
+      edgeIds: chain.edgeIds,
+      startNodeId: chain.startNodeId,
+      endNodeId: chain.endNodeId,
+      geometry,
+      oneWay: isOneWay,
+      isDestination: true,
+    };
+
+    corridors.set(id, corridor);
+    registerAllNodes(chain.edgeIds, id);
+  }
+
   // Step 5: Build adjacency graph
   const adjacency = new Map<string, string[]>();
 
@@ -224,13 +269,16 @@ export async function buildCorridors(
     connector.corridorIds = adjIds.filter((id) => corridors.has(id));
   }
 
-  // Step 5b: Sanitize connectors — only keep connectors that bridge 2+ distinct corridors.
-  // Connectors that loop within neighborhoods or dead-end into a single corridor
-  // don't serve routing and create noise.
+  // Step 5b: Sanitize connectors — only keep connectors that bridge 2+ distinct corridors,
+  // OR that connect to a destination corridor (which needs at least one connector to be reachable).
   const removedConnectorIds = new Set<string>();
   for (const connector of connectors.values()) {
     const uniqueCorridorIds = new Set(connector.corridorIds);
-    if (uniqueCorridorIds.size < 2) {
+    const connectsToDestination = connector.corridorIds.some((cid) => {
+      const c = corridors.get(cid);
+      return c?.isDestination === true;
+    });
+    if (uniqueCorridorIds.size < 2 && !connectsToDestination) {
       removedConnectorIds.add(connector.id);
       connectors.delete(connector.id);
       adjacency.delete(connector.id);
@@ -251,8 +299,10 @@ export async function buildCorridors(
 
   // Step 6: Compute stats
   let totalLength = 0;
+  let destinationCount = 0;
   for (const c of corridors.values()) {
     totalLength += c.attributes.lengthMeters;
+    if (c.isDestination) destinationCount++;
   }
 
   const buildTimeMs = performance.now() - startTime;
@@ -262,6 +312,7 @@ export async function buildCorridors(
     stats: {
       corridorCount: corridors.size,
       connectorCount: connectors.size,
+      destinationCount,
       averageLengthMeters:
         corridors.size > 0 ? totalLength / corridors.size : 0,
       totalLengthMeters: totalLength,
@@ -399,8 +450,9 @@ export {
   getCounterpartEdgeId,
   computeUndirectedDegree,
   trimDeadEnds,
+  isDestinationCandidate,
 } from "./chain-builder.js";
-export type { EdgeChain } from "./chain-builder.js";
+export type { EdgeChain, TrimResult } from "./chain-builder.js";
 export {
   aggregateAttributes,
   deriveName,

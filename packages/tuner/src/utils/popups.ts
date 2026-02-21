@@ -59,7 +59,7 @@ export function connectorPopupHtml(props: Record<string, unknown>): string {
 /** Build popup HTML for a route summary feature. */
 export function routeSummaryPopupHtml(props: Record<string, unknown>): string {
   const p = props;
-  const label = p["isPrimary"] ? "Primary Route" : `Alternative ${p["routeIndex"]}`;
+  const label = "Route";
   const distKm = p["distanceKm"] as number;
   const surfPaved = (p["surfacePaved"] as number) || 0;
   const surfUnpaved = (p["surfaceUnpaved"] as number) || 0;

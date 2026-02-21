@@ -11,6 +11,9 @@ data/*-latest.osm.pbf
 data/michigan*.osm.pbf
 data/*.geojson
 
+# Elevation tiles (downloaded via scripts/download-elevation.sh)
+data/elevation/
+
 # IDE
 .idea/
 .vscode/

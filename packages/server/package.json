@@ -12,10 +12,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@tailwind-loops/types": "workspace:*",
     "@tailwind-loops/builder": "workspace:*",
     "@tailwind-loops/routing": "workspace:*",
+    "@tailwind-loops/types": "workspace:*",
     "@tsoa/runtime": "^6.6.0",
+    "axios": "^1.13.5",
     "cors": "^2.8.5",
     "express": "^4.21.0"
   },

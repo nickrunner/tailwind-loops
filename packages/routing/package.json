@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./route-elevation": {
+      "types": "./dist/export/route-elevation.d.ts",
+      "import": "./dist/export/route-elevation.js"
     }
   },
   "scripts": {

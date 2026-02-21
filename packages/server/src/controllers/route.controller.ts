@@ -1,5 +1,6 @@
 import { Body, Controller, Post, Route, Tags, SuccessResponse } from "@tsoa/runtime";
 import type { GenerateRouteRequest } from "../models/requests.js";
+import type { GenerateRouteResponse } from "../models/responses.js";
 import {
   RouteGenerationService,
   RouteNotFoundError,
@@ -10,17 +11,17 @@ import {
 export class RouteController extends Controller {
   /** Generate loop routes from a starting point */
   @Post("generate")
-  @SuccessResponse(200, "Routes generated successfully")
+  @SuccessResponse(200, "Route generated successfully")
   public async generateRoutes(
     @Body() body: GenerateRouteRequest,
-  ): Promise<unknown> {
+  ): Promise<GenerateRouteResponse> {
     const service = new RouteGenerationService();
     try {
       return await service.generate(body);
     } catch (err) {
       if (err instanceof RouteNotFoundError) {
         this.setStatus(404);
-        return { message: err.message };
+        return { message: err.message } as unknown as GenerateRouteResponse;
       }
       throw err;
     }

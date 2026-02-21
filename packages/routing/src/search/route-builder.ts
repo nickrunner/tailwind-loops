@@ -51,19 +51,20 @@ export function candidateToRoute(
       const entryNodeId = candidate.nodePath[i - edgeIds.length]!;
       const reversed = entryNodeId !== corridor.startNodeId;
 
-      segments.push({ kind: "corridor", corridor, reversed, traversedEdgeIds: edgeIds });
-
-      // Build geometry from individual graph edges
+      // Build per-segment geometry from individual graph edges
+      const segGeometry: Coordinate[] = [];
       for (const edgeId of edgeIds) {
         const edge = graph.edges.get(edgeId);
         if (!edge) continue;
-        // Determine if this individual edge is traversed in reverse
         const edgeNodeIdx = candidate.edgePath.indexOf(edgeId);
         const edgeEntryNode = candidate.nodePath[edgeNodeIdx]!;
         const edgeReversed = edgeEntryNode !== edge.fromNodeId;
         const coords = edgeReversed ? [...edge.geometry].reverse() : edge.geometry;
-        appendGeometry(geometry, coords);
+        appendGeometry(segGeometry, coords);
       }
+
+      segments.push({ kind: "corridor", corridor, reversed, traversedEdgeIds: edgeIds, geometry: segGeometry });
+      appendGeometry(geometry, segGeometry);
     } else {
       // Connector — collect consecutive edges from same connector
       const edgeIds: string[] = [];
@@ -76,8 +77,7 @@ export function candidateToRoute(
         .map((eid) => graph.edges.get(eid))
         .filter((e) => e != null);
 
-      segments.push({ kind: "connecting", edges });
-
+      const segGeometry: Coordinate[] = [];
       for (const edgeId of edgeIds) {
         const edge = graph.edges.get(edgeId);
         if (!edge) continue;
@@ -85,8 +85,11 @@ export function candidateToRoute(
         const edgeEntryNode = candidate.nodePath[edgeNodeIdx]!;
         const edgeReversed = edgeEntryNode !== edge.fromNodeId;
         const coords = edgeReversed ? [...edge.geometry].reverse() : edge.geometry;
-        appendGeometry(geometry, coords);
+        appendGeometry(segGeometry, coords);
       }
+
+      segments.push({ kind: "connecting", edges, geometry: segGeometry });
+      appendGeometry(geometry, segGeometry);
     }
   }
 

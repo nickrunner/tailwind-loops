@@ -1,7 +1,7 @@
 /**
  * Generalized enrichment provider interface.
  *
- * Unlike the old SurfaceDataProvider, providers only fetch observations
+ * Providers only fetch observations
  * for a region — spatial matching to edges is handled centrally by the
  * pipeline via the spatial index.
  */

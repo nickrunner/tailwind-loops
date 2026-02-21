@@ -6,10 +6,11 @@
  * edge IDs) before attribute aggregation.
  */
 
-import type { Coordinate, Graph, GraphEdge } from "@tailwind-loops/types";
+import type { Coordinate, Graph, GraphEdge, RoadClass } from "@tailwind-loops/types";
 import type { CorridorBuilderOptions } from "./index.js";
 import { DEFAULT_CORRIDOR_OPTIONS } from "./index.js";
 import { edgeCompatibility } from "./edge-compatibility.js";
+import { aggregateAttributes } from "./corridor-attributes.js";
 
 /**
  * Get the counterpart edge ID for bidirectional edges.
@@ -276,6 +277,77 @@ export function computeUndirectedDegree(
   return degree;
 }
 
+/** Result of dead-end trimming */
+export interface TrimResult {
+  /** Chains that survived trimming */
+  chains: EdgeChain[];
+  /** Dead-end chains rescued as destination candidates */
+  destinationChains: EdgeChain[];
+}
+
+/** Road classes that are never destination-worthy */
+const DESTINATION_EXCLUDED_ROAD_CLASSES: Set<RoadClass> = new Set([
+  "service",
+  "motorway",
+  "trunk",
+]);
+
+/**
+ * Check whether a fully-consumed dead-end chain qualifies as a destination corridor.
+ *
+ * Uses activity-agnostic criteria only (the corridor network is cached without
+ * activity-type key). Per-activity scoring decides at search time whether a
+ * destination is worth routing to.
+ *
+ * Hard gate: length >= 500m AND not an excluded road class.
+ * Plus at least one quality signal:
+ * - Elevation gain >= 30m (mountain road)
+ * - Dedicated infra road class (cycleway/path/track) AND length >= 800m
+ * - Named road AND length >= 1000m
+ */
+export function isDestinationCandidate(
+  chain: EdgeChain,
+  graph: Graph
+): boolean {
+  // Hard gate: minimum length
+  if (chain.totalLengthMeters < 500) return false;
+
+  // Hard gate: check predominant road class is not excluded
+  const attrs = aggregateAttributes(chain.edgeIds, graph);
+  if (DESTINATION_EXCLUDED_ROAD_CLASSES.has(attrs.predominantRoadClass)) {
+    return false;
+  }
+
+  // Quality signal: elevation gain >= 30m
+  if (attrs.totalElevationGain != null && attrs.totalElevationGain >= 30) {
+    return true;
+  }
+
+  // Quality signal: dedicated infra road class AND length >= 800m
+  const dedicatedInfraClasses: Set<RoadClass> = new Set(["cycleway", "path", "track"]);
+  if (
+    dedicatedInfraClasses.has(attrs.predominantRoadClass) &&
+    chain.totalLengthMeters >= 800
+  ) {
+    return true;
+  }
+
+  // Quality signal: named road AND length >= 1000m
+  // Check if the chain has a consistent name from edge attributes
+  let namedEdgeLength = 0;
+  for (const edgeId of chain.edgeIds) {
+    const edge = graph.edges.get(edgeId);
+    if (edge?.attributes.name) {
+      namedEdgeLength += edge.attributes.lengthMeters;
+    }
+  }
+  if (namedEdgeLength > chain.totalLengthMeters * 0.5 && chain.totalLengthMeters >= 1000) {
+    return true;
+  }
+
+  return false;
+}
+
 /**
  * Trim dead-end edges from both ends of each chain.
  *
@@ -283,19 +355,22 @@ export function computeUndirectedDegree(
  * no meaningful routing choices). Corridors should start and end at nodes
  * where there are real routing alternatives.
  *
- * Chains fully consumed by trimming are discarded.
+ * Chains fully consumed by trimming are checked for destination candidacy
+ * before being discarded. Qualifying dead-end chains are preserved in
+ * `destinationChains` for later promotion to destination corridors.
  *
  * @param chains - The edge chains to trim
  * @param graph - The graph containing edge data
  * @param nodeDegree - Pruned degree per node (from computeUndirectedDegree)
- * @returns Trimmed chains (empty chains removed)
+ * @returns Trimmed chains and rescued destination chains
  */
 export function trimDeadEnds(
   chains: EdgeChain[],
   graph: Graph,
   nodeDegree: Map<string, number>
-): EdgeChain[] {
+): TrimResult {
   const result: EdgeChain[] = [];
+  const destinationChains: EdgeChain[] = [];
 
   for (const chain of chains) {
     const edgeIds = [...chain.edgeIds];
@@ -322,8 +397,13 @@ export function trimDeadEnds(
       }
     }
 
-    // Discard empty chains
-    if (edgeIds.length === 0) continue;
+    // Fully consumed: check if the original chain qualifies as a destination
+    if (edgeIds.length === 0) {
+      if (isDestinationCandidate(chain, graph)) {
+        destinationChains.push(chain);
+      }
+      continue;
+    }
 
     const firstEdge = graph.edges.get(edgeIds[0]!)!;
     const lastEdge = graph.edges.get(edgeIds[edgeIds.length - 1]!)!;
@@ -340,7 +420,7 @@ export function trimDeadEnds(
     });
   }
 
-  return result;
+  return { chains: result, destinationChains };
 }
 
 /**

@@ -10,7 +10,7 @@ import type {
 } from "@tailwind-loops/types";
 
 // Real SRTM1 tile covering N42-N43, W86-W85 (Grand Rapids area)
-const TILES_DIR = join(__dirname, "../../../../data/michigan/grand-rapids");
+const TILES_DIR = join(__dirname, "../../../../data/elevation");
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -22,7 +22,6 @@ function makeAttributes(
     surfaceClassification: {
       surface: "paved",
       confidence: 0.8,
-      observations: [],
       hasConflict: false,
     },
     infrastructure: {

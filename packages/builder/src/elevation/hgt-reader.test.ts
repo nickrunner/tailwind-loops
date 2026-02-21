@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { DemReader } from "./hgt-reader.js";
 
 // Real SRTM1 tile covering N42-N43, W86-W85 (Grand Rapids area)
-const TILES_DIR = join(__dirname, "../../../../data/michigan/grand-rapids");
+const TILES_DIR = join(__dirname, "../../../../data/elevation");
 
 // ─── tileFilename (unit, no I/O) ────────────────────────────────────────────
 

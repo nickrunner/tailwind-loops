@@ -5,6 +5,7 @@ export { TwlProvider, type TwlProviderProps } from "./context/TwlProvider.js";
 // Client hooks
 export {
   useRouteClient,
+  useCorridorClient,
   useRegionClient,
   useConfigClient,
   useHealthClient,
@@ -13,9 +14,13 @@ export {
 // API hooks — Routes
 export { useGenerateRoutes } from "./hooks/useRoutes.js";
 
+// API hooks — Corridors
+export { useCorridorNetwork } from "./hooks/useCorridors.js";
+
 // API hooks — Regions
 export {
   useRegionCache,
+  useCacheHitZones,
   useClearAllRegions,
   useClearRegion,
 } from "./hooks/useRegions.js";
@@ -50,12 +55,20 @@ export type {
   Coordinate,
   GenerateRouteRequest,
   GenerateRouteResponse,
-  CorridorNetworkGeoJson,
+  Route,
+  RouteSegment,
+  CorridorScore,
+  CorridorAttributes,
+  CorridorSegment,
+  ConnectingSegment,
   RouteStats,
-  GeoJsonFeature,
+  CorridorNetworkRequest,
+  CorridorNetworkGeoJson,
   HealthResponse,
   CacheEntry,
   CacheListResponse,
+  CacheHitZone,
+  CacheHitZonesResponse,
   ProfileListItem,
   SaveConfigRequest,
   SaveConfigResponse,

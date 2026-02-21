@@ -1,0 +1,23 @@
+node_modules
+dist
+build
+.git
+.gitignore
+
+# Large data files (mounted as volumes instead)
+data/**/*.osm.pbf
+data/**/*.hgt
+
+# Frontend packages (not needed in server image)
+packages/tuner
+packages/clients-core
+packages/clients-react
+
+# Test files
+**/*.test.ts
+**/__tests__
+
+# Dev/CI files
+.env
+.env.local
+*.md

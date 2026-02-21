@@ -3,6 +3,7 @@ export { BaseClient, type ClientConfig, type RequestParams } from "./baseClient.
 
 // Domain clients
 export { RouteClient } from "./routeClient.js";
+export { CorridorClient } from "./corridorClient.js";
 export { RegionClient } from "./regionClient.js";
 export { ConfigClient } from "./configClient.js";
 export { HealthClient } from "./healthClient.js";
@@ -15,10 +16,16 @@ export type {
   ActivityType,
   TurnFrequency,
   GenerateRouteRequest,
+  Route,
+  RouteSegment,
+  CorridorScore,
+  CorridorAttributes,
+  CorridorSegment,
+  ConnectingSegment,
   RouteStats,
-  RouteFeatureProperties,
-  GeoJsonFeature,
   GenerateRouteResponse,
+  // Corridor Network
+  CorridorNetworkRequest,
   CorridorNetworkGeoJson,
   // Health
   CacheStats,
@@ -28,6 +35,8 @@ export type {
   CacheEntry,
   CacheListResponse,
   CacheClearResponse,
+  CacheHitZone,
+  CacheHitZonesResponse,
   // Config
   ProfileListItem,
   SaveConfigRequest,

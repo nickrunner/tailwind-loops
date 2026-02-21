@@ -1,7 +1,8 @@
 import { useRef, useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer, TileLayer, GeoJSON, Marker, useMapEvents, CircleMarker, Tooltip, Rectangle } from "react-leaflet";
 import L from "leaflet";
-import type { GenerateRouteResponse, CorridorNetworkGeoJson } from "@tailwind-loops/clients-react";
+import type { Route, CorridorNetworkGeoJson } from "@tailwind-loops/clients-react";
+import { routeToGeoJson } from "../../utils/routeGeoJson.js";
 import { corridorPopupHtml, connectorPopupHtml, routeSummaryPopupHtml } from "../../utils/popups.js";
 import { drawElevationChart } from "../../utils/elevationChart.js";
 
@@ -15,7 +16,7 @@ interface LatLng {
 interface TunerMapProps {
   startLatLng: LatLng;
   onStartChange: (latlng: LatLng) => void;
-  routeData: GenerateRouteResponse | null;
+  route: Route | null;
   corridorNetwork: CorridorNetworkGeoJson | null;
   visibleTypes: Record<string, boolean>;
   showArrows: boolean;
@@ -42,7 +43,7 @@ function MapClickHandler({ onStartChange }: { onStartChange: (latlng: LatLng) =>
 }
 
 /** Directional arrow markers along route segments */
-function RouteArrows({ routeData, visible }: { routeData: GenerateRouteResponse; visible: boolean }) {
+function RouteArrows({ routeGeoJson, visible }: { routeGeoJson: GeoJSON.FeatureCollection; visible: boolean }) {
   const map = useMapEvents({ zoomend() {} }); // just to get map ref
   const layerRef = useRef<L.LayerGroup | null>(null);
 
@@ -57,11 +58,12 @@ function RouteArrows({ routeData, visible }: { routeData: GenerateRouteResponse;
     const arrows: L.Marker[] = [];
     const zoom = map.getZoom();
 
-    for (const feature of routeData.features) {
-      const props = feature.properties;
-      if (!props.isSegment) continue;
-      const coords = feature.geometry.coordinates;
-      const color = props.stroke || "#2563eb";
+    for (const feature of routeGeoJson.features) {
+      const props = feature.properties as Record<string, unknown>;
+      if (!props["isSegment"]) continue;
+      const geom = feature.geometry as GeoJSON.LineString;
+      const coords = geom.coordinates as [number, number][];
+      const color = (props["stroke"] as string) || "#2563eb";
 
       const intervalPx = 80;
       const firstCoord = coords[0];
@@ -107,7 +109,7 @@ function RouteArrows({ routeData, visible }: { routeData: GenerateRouteResponse;
         layerRef.current = null;
       }
     };
-  }, [routeData, visible, map]);
+  }, [routeGeoJson, visible, map]);
 
   return null;
 }
@@ -115,7 +117,7 @@ function RouteArrows({ routeData, visible }: { routeData: GenerateRouteResponse;
 export function TunerMap({
   startLatLng,
   onStartChange,
-  routeData,
+  route,
   corridorNetwork,
   visibleTypes,
   showArrows,
@@ -132,6 +134,12 @@ export function TunerMap({
       setHighlightLayer(null);
     }
   }, [highlightLayer]);
+
+  // Convert Route to GeoJSON for rendering
+  const routeGeoJson = useMemo(() => {
+    if (!route) return null;
+    return routeToGeoJson(route);
+  }, [route]);
 
   // Filter corridor network by visible types
   const filteredNetwork = useMemo(() => {
@@ -154,8 +162,8 @@ export function TunerMap({
 
   // Route key for re-rendering
   const routeKey = useMemo(
-    () => `route-${routeData?._meta?.searchTimeMs ?? 0}-${routeData?._meta?.routeCount ?? 0}`,
-    [routeData],
+    () => `route-${route?.id ?? "none"}-${route?.score ?? 0}`,
+    [route],
   );
 
   const onCorridorEachFeature = useCallback(
@@ -196,9 +204,9 @@ export function TunerMap({
           setTimeout(() => {
             const canvas = document.querySelector(".elev-chart-canvas") as HTMLCanvasElement | null;
             if (canvas) {
-              const profile = JSON.parse(canvas.dataset["profile"] ?? "[]") as number[];
+              const profileData = JSON.parse(canvas.dataset["profile"] ?? "[]") as number[];
               const lengthKm = parseFloat(canvas.dataset["lengthKm"] ?? "0");
-              if (profile.length > 1) drawElevationChart(canvas, profile, lengthKm);
+              if (profileData.length > 1) drawElevationChart(canvas, profileData, lengthKm);
             }
           }, 10);
         });
@@ -316,17 +324,17 @@ export function TunerMap({
       )}
 
       {/* Route layer */}
-      {routeData && (
+      {routeGeoJson && (
         <GeoJSON
           key={routeKey}
-          data={routeData as unknown as GeoJSON.FeatureCollection}
+          data={routeGeoJson as unknown as GeoJSON.FeatureCollection}
           style={routeStyle}
           onEachFeature={onRouteEachFeature}
         />
       )}
 
       {/* Route arrows */}
-      {routeData && <RouteArrows routeData={routeData} visible={showArrows} />}
+      {routeGeoJson && <RouteArrows routeGeoJson={routeGeoJson as unknown as GeoJSON.FeatureCollection} visible={showArrows} />}
 
       {/* Draggable start marker */}
       <Marker
@@ -342,7 +350,7 @@ export function TunerMap({
       />
 
       {/* Start point circle when route is present */}
-      {routeData && (
+      {route && (
         <CircleMarker
           center={[startLatLng.lat, startLatLng.lng]}
           radius={8}

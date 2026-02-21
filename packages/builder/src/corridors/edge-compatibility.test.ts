@@ -9,7 +9,6 @@ function makeEdge(overrides: Partial<EdgeAttributes> = {}): EdgeAttributes {
     surfaceClassification: {
       surface: "paved",
       confidence: 0.8,
-      observations: [],
       hasConflict: false,
     },
     infrastructure: {
@@ -44,7 +43,6 @@ describe("edgeCompatibility", () => {
       surfaceClassification: {
         surface: "paved",
         confidence: 0.9,
-        observations: [],
         hasConflict: false,
       },
       infrastructure: {
@@ -61,7 +59,6 @@ describe("edgeCompatibility", () => {
       surfaceClassification: {
         surface: "unpaved",
         confidence: 0.5,
-        observations: [],
         hasConflict: false,
       },
       infrastructure: {
@@ -112,7 +109,6 @@ describe("edgeCompatibility", () => {
         surfaceClassification: {
           surface: "unpaved",
           confidence: 0.8,
-          observations: [],
           hasConflict: false,
         },
       });
@@ -127,7 +123,6 @@ describe("edgeCompatibility", () => {
         surfaceClassification: {
           surface: "unknown",
           confidence: 0.1,
-          observations: [],
           hasConflict: false,
         },
       });
@@ -141,7 +136,6 @@ describe("edgeCompatibility", () => {
         surfaceClassification: {
           surface: "paved",
           confidence: 0.8,
-          observations: [],
           hasConflict: false,
         },
       });
@@ -149,7 +143,6 @@ describe("edgeCompatibility", () => {
         surfaceClassification: {
           surface: "paved",
           confidence: 0.8,
-          observations: [],
           hasConflict: false,
         },
       });
