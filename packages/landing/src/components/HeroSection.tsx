@@ -22,7 +22,7 @@ export function HeroSection() {
           Coming Soon
         </span>
         <h1 className="mb-4 text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
-          What's <span className="text-brand-wind">Today's Ride?</span>
+          What's Today's <span className="text-brand-wind">Ride?</span>
         </h1>
         <p className="mb-10 max-w-xl text-lg text-white/80">
           AI-powered route generation for cyclists, runners, and walkers. Tell us the distance, vibe,
