@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       Authorization: `Token ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ email_address: email }),
+    body: JSON.stringify({ email_address: email, type: "regular" }),
   });
 
   if (!res.ok) {
