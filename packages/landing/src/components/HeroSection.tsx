@@ -8,15 +8,15 @@ export function HeroSection() {
           Coming Soon
         </span>
         <h1 className="mb-4 text-4xl font-bold tracking-tight text-brand-navy sm:text-5xl lg:text-6xl">
-          Routes That{" "}
+          Just Tell Us Where{" "}
           <span className="bg-gradient-to-r from-brand-purple-dark to-brand-purple-light bg-clip-text text-transparent">
-            Flow
+            You Want to Go
           </span>
         </h1>
         <p className="mb-10 max-w-xl text-lg text-slate-500">
-          Corridor-based route planning for road cycling, gravel, running, and
-          walking. Long uninterrupted stretches, not a zig-zag of turn-by-turn
-          segments.
+          AI-powered route generation for cyclists, runners, and walkers.
+          Describe your perfect ride in plain English — distance, vibe,
+          surface, scenery — and get a route built just for you.
         </p>
         <EmailSignup />
       </div>
