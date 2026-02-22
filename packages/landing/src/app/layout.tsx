@@ -2,22 +2,24 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Tailwind Loops — Corridor-Based Route Planning for Cyclists & Runners",
+  title: "Tailwind Loops — AI-Powered Route Generation for Cyclists & Runners",
   description:
-    "Discover the best cycling and running routes. Tailwind Loops uses corridor-based scoring to find routes with sustained flow, safety, and character. Coming soon.",
+    "Describe your perfect ride and get an optimized route in seconds. Tailwind Loops uses AI and corridor-based intelligence to generate cycling and running routes with sustained flow, safety, and scenery. Coming soon.",
   keywords: [
+    "AI route planning",
     "cycling routes",
     "running routes",
-    "route planning",
+    "intelligent routing",
     "road cycling",
     "gravel cycling",
     "trail running",
-    "corridor routing",
+    "AI cycling",
+    "route generation",
   ],
   openGraph: {
-    title: "Tailwind Loops — Routes That Flow",
+    title: "Tailwind Loops — AI-Powered Route Generation",
     description:
-      "Corridor-based route planning for road cycling, gravel, running, and walking. Coming soon.",
+      "Describe your ideal ride. Get an optimized route in seconds. AI-powered corridor intelligence for cyclists and runners. Coming soon.",
     url: "https://tailwindloops.com",
     siteName: "Tailwind Loops",
     type: "website",
@@ -25,9 +27,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Tailwind Loops — Routes That Flow",
+    title: "Tailwind Loops — AI-Powered Route Generation",
     description:
-      "Corridor-based route planning for road cycling, gravel, running, and walking. Coming soon.",
+      "Describe your ideal ride. Get an optimized route in seconds. AI-powered corridor intelligence for cyclists and runners. Coming soon.",
   },
 };
 
