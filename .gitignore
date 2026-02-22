@@ -15,6 +15,10 @@ data/*.geojson
 # Elevation tiles (downloaded via scripts/download-elevation.sh)
 data/elevation/
 
+# HeiGIT surface data (downloaded via scripts/download-heigit-surface.py)
+data/surface/*.sqlite
+data/surface/*.gpkg
+
 # IDE
 .idea/
 .vscode/

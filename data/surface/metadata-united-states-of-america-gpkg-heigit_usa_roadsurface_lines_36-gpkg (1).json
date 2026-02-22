@@ -1,0 +1,15 @@
+{
+    "created": "2025-11-20T12:33:26.252018",
+    "description": "Geopackage file for United states of america",
+    "format": "Geopackage",
+    "download_url": "https://warm.storage.heigit.org/heigit-hdx-public/mapillary_road_surface_missing_countries/heigit_usa_roadsurface_lines_36.gpkg",
+    "id": "80fa23ca-467e-45bf-b14d-e2fd377ee6dd",
+    "last_modified": "2025-11-20T12:33:26.213801",
+    "metadata_modified": "2025-11-21T10:37:47.504804",
+    "microdata": false,
+    "dataset_id": "f1a5612a-9925-4435-9b24-cb3604f904d8",
+    "resource_type": "api",
+    "name": "United states of america GPKG heigit_usa_roadsurface_lines_36.gpkg",
+    "mimetype": null,
+    "size": "2.5G"
+}

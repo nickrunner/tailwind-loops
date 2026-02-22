@@ -25,8 +25,8 @@ export function HeroSection() {
           What's the ride today?
         </h1>
         <p className="mb-10 max-w-xl text-lg text-white/80">
-          AI-powered route generation for cyclists, runners, and walkers. Tell us the distance, vibe,
-          surface, and scenery — we'll build the perfect route for you.
+          AI-powered route generation for cyclists, runners, and walkers. Describe your ideal route,
+          get it in seconds.
         </p>
         <EmailSignup />
       </div>

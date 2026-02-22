@@ -1,12 +1,25 @@
 /**
  * HeiGIT road surface enrichment provider.
  *
- * Reads pre-downloaded GeoPackage (GPKG) files from the HeiGIT/HDX dataset
- * containing paved/unpaved classification derived from Mapillary imagery
- * via SWIN-Transformer. Uses SQLite spatial queries to efficiently extract
- * only the features within the requested bounds.
+ * Supports two file formats:
  *
- * Features are keyed by OSM way ID for direct edge matching.
+ * 1. **Lightweight SQLite** (.sqlite) — Produced by scripts/download-heigit-surface.py.
+ *    Contains ML-predicted surface classifications per OSM way ID with centroid
+ *    coordinates and an rtree spatial index for efficient bbox queries.
+ *    This is the recommended format (~300-500MB vs ~100GB for full GPKG dataset).
+ *
+ * 2. **GeoPackage** (.gpkg) — Raw HeiGIT/HDX files with full road geometry.
+ *    Uses GeoPackage rtree spatial index for bbox filtering.
+ *
+ * Data is paved/unpaved classification derived from Mapillary street-level imagery
+ * via SWIN-Transformer. Features are keyed by OSM way ID for direct edge matching.
+ *
+ * HeiGIT GPKG schema (relevant columns):
+ *   osm_id — OSM way ID
+ *   pred_class — "paved" or "unpaved" (NULL if no ML prediction)
+ *   pred_label — 0.0 = paved, 1.0 = unpaved (NULL if no ML prediction)
+ *   n_of_predictions_used — number of Mapillary images used
+ *   combined_surface_DL_priority — merged ML + OSM surface classification
  */
 
 import Database from "better-sqlite3";
@@ -18,17 +31,22 @@ import type {
 import type { EnrichmentProvider } from "../provider.js";
 
 // ---------------------------------------------------------------------------
-// Row type from GPKG query
+// Row types
 // ---------------------------------------------------------------------------
 
-interface SurfaceRow {
+/** Row from the lightweight SQLite DB */
+interface LightweightRow {
   osm_id: number;
-  pred_label: number; // 0 = paved, 1 = unpaved
-  pred_score: number; // 0-1 confidence
-  minx: number;
-  miny: number;
-  maxx: number;
-  maxy: number;
+  pred_label: number; // 0.0 = paved, 1.0 = unpaved
+  n_predictions: number | null; // number of Mapillary images used
+}
+
+/** Row from a raw GeoPackage with rtree bbox */
+interface GpkgRow {
+  osm_id: number;
+  pred_label: number | null; // 0.0 = paved, 1.0 = unpaved, NULL if no ML prediction
+  combined_surface_DL_priority: string | null; // "paved", "unpaved", or NULL
+  n_of_predictions_used: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -36,8 +54,23 @@ interface SurfaceRow {
 // ---------------------------------------------------------------------------
 
 export interface HeiGitSurfaceProviderOptions {
-  /** Path to the HeiGIT GeoPackage (.gpkg) file */
+  /** Path to a HeiGIT .sqlite (lightweight) or .gpkg (full GeoPackage) file */
   filePath: string;
+}
+
+// ---------------------------------------------------------------------------
+// Confidence heuristics
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a confidence score from the number of Mapillary images used.
+ * More images = more reliable prediction.
+ */
+function confidenceFromPredictionCount(n: number | null): number {
+  if (n == null || n <= 0) return 0.6;
+  if (n >= 10) return 0.9;
+  // Linear interpolation: 1 prediction → 0.65, 10 → 0.9
+  return 0.6 + 0.03 * Math.min(n, 10);
 }
 
 // ---------------------------------------------------------------------------
@@ -50,64 +83,147 @@ export class HeiGitSurfaceProvider implements EnrichmentProvider {
   readonly provides: readonly EnrichableAttribute[] = ["surface"];
 
   private readonly filePath: string;
+  private readonly isLightweight: boolean;
   private db: Database.Database | null = null;
 
   constructor(options: HeiGitSurfaceProviderOptions) {
     this.filePath = options.filePath;
+    this.isLightweight = options.filePath.endsWith(".sqlite");
   }
 
   async fetchObservations(bounds: BoundingBox): Promise<Observation[]> {
+    if (this.isLightweight) {
+      return this.fetchFromLightweight(bounds);
+    }
+    return this.fetchFromGpkg(bounds);
+  }
+
+  /**
+   * Lightweight SQLite: query using rtree spatial index on centroid coordinates.
+   * All rows have ML predictions (OSM-only rows are filtered during download).
+   */
+  private fetchFromLightweight(bounds: BoundingBox): Observation[] {
     const db = this.open();
 
-    // Discover the feature table and its rtree index
-    const { tableName, rtreeName } = discoverTable(db);
+    const hasRtree = db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='surface_rtree'"
+      )
+      .get();
 
-    // Query using the GeoPackage rtree spatial index for bbox filtering,
-    // then join back to the feature table for attributes.
-    // Group by osm_id and pick the highest-confidence prediction per way.
+    let rows: LightweightRow[];
+    if (hasRtree) {
+      rows = db
+        .prepare(
+          `SELECT s.osm_id, s.pred_label, s.n_predictions
+           FROM surface_rtree r
+           JOIN surface s ON s.rowid = r.id
+           WHERE r.min_lng <= ? AND r.max_lng >= ?
+             AND r.min_lat <= ? AND r.max_lat >= ?`
+        )
+        .all(
+          bounds.maxLng,
+          bounds.minLng,
+          bounds.maxLat,
+          bounds.minLat,
+        ) as LightweightRow[];
+    } else {
+      // Fallback: simple WHERE on centroid columns
+      rows = db
+        .prepare(
+          `SELECT osm_id, pred_label, n_predictions FROM surface
+           WHERE centroid_lat >= ? AND centroid_lat <= ?
+             AND centroid_lng >= ? AND centroid_lng <= ?`
+        )
+        .all(
+          bounds.minLat,
+          bounds.maxLat,
+          bounds.minLng,
+          bounds.maxLng,
+        ) as LightweightRow[];
+    }
+
+    return rows.map((row) => ({
+      attribute: "surface" as const,
+      source: "mapillary" as const,
+      value: row.pred_label === 0 ? ("paved" as const) : ("unpaved" as const),
+      sourceConfidence: confidenceFromPredictionCount(row.n_predictions),
+      osmWayId: String(row.osm_id),
+    }));
+  }
+
+  /**
+   * GeoPackage: use GeoPackage rtree spatial index for bbox filtering.
+   * Extracts ML predictions where available, falls back to combined surface.
+   */
+  private fetchFromGpkg(bounds: BoundingBox): Observation[] {
+    const db = this.open();
+    const { tableName, rtreeName } = discoverGpkgTable(db);
+
     const sql = `
       SELECT
         f.osm_id,
         f.pred_label,
-        f.pred_score,
-        r.minx, r.miny, r.maxx, r.maxy
+        f.combined_surface_DL_priority,
+        f.n_of_predictions_used
       FROM "${rtreeName}" r
       JOIN "${tableName}" f ON f.fid = r.id
       WHERE r.minx <= ? AND r.maxx >= ?
         AND r.miny <= ? AND r.maxy >= ?
-      ORDER BY f.osm_id, f.pred_score DESC
+        AND (f.pred_label IS NOT NULL OR f.combined_surface_DL_priority IS NOT NULL)
     `;
 
     const rows = db.prepare(sql).all(
-      bounds.maxLng, // r.minx <= maxLng
-      bounds.minLng, // r.maxx >= minLng
-      bounds.maxLat, // r.miny <= maxLat
-      bounds.minLat, // r.maxy >= minLat
-    ) as SurfaceRow[];
+      bounds.maxLng,
+      bounds.minLng,
+      bounds.maxLat,
+      bounds.minLat,
+    ) as GpkgRow[];
 
-    // Deduplicate: keep first row per osm_id (highest pred_score due to ORDER BY)
-    const bestByWayId = new Map<number, SurfaceRow>();
+    // Deduplicate by osm_id: prefer rows with ML predictions, then by n_of_predictions_used
+    const bestByWayId = new Map<number, GpkgRow>();
     for (const row of rows) {
-      if (!bestByWayId.has(row.osm_id)) {
+      const existing = bestByWayId.get(row.osm_id);
+      if (!existing) {
         bestByWayId.set(row.osm_id, row);
+      } else {
+        const existingHasMl = existing.pred_label != null;
+        const newHasMl = row.pred_label != null;
+        if (
+          (newHasMl && !existingHasMl) ||
+          (newHasMl === existingHasMl &&
+            (row.n_of_predictions_used ?? 0) >
+              (existing.n_of_predictions_used ?? 0))
+        ) {
+          bestByWayId.set(row.osm_id, row);
+        }
       }
     }
 
-    // Convert to observations
     const observations: Observation[] = [];
-    for (const [osmId, row] of bestByWayId) {
-      const surfaceType = row.pred_label === 0 ? "paved" : "unpaved";
-      // Use bbox centroid as representative geometry
-      const centroidLng = (row.minx + row.maxx) / 2;
-      const centroidLat = (row.miny + row.maxy) / 2;
+    for (const [, row] of bestByWayId) {
+      let surfaceType: "paved" | "unpaved";
+      let confidence: number;
+
+      if (row.pred_label != null) {
+        // ML prediction available
+        surfaceType = row.pred_label === 0 ? "paved" : "unpaved";
+        confidence = confidenceFromPredictionCount(row.n_of_predictions_used);
+      } else if (row.combined_surface_DL_priority) {
+        // OSM-derived only
+        surfaceType =
+          row.combined_surface_DL_priority === "paved" ? "paved" : "unpaved";
+        confidence = 0.5; // Lower confidence for OSM-echo data
+      } else {
+        continue;
+      }
 
       observations.push({
         attribute: "surface",
         source: "mapillary",
         value: surfaceType,
-        sourceConfidence: row.pred_score,
-        osmWayId: String(osmId),
-        geometry: [{ lat: centroidLat, lng: centroidLng }],
+        sourceConfidence: confidence,
+        osmWayId: String(row.osm_id),
       });
     }
 
@@ -127,14 +243,11 @@ export class HeiGitSurfaceProvider implements EnrichmentProvider {
 
 /**
  * Discover the feature table name and its rtree index from GPKG metadata.
- * GeoPackage stores table/column info in gpkg_contents and gpkg_geometry_columns.
- * The rtree follows the naming convention: rtree_<table>_<geom_column>.
  */
-function discoverTable(db: Database.Database): {
+function discoverGpkgTable(db: Database.Database): {
   tableName: string;
   rtreeName: string;
 } {
-  // Find the first features table in gpkg_contents
   const contentsRow = db
     .prepare(
       `SELECT table_name FROM gpkg_contents WHERE data_type = 'features' LIMIT 1`
@@ -146,7 +259,6 @@ function discoverTable(db: Database.Database): {
   }
   const tableName = contentsRow.table_name;
 
-  // Find the geometry column for this table
   const geomRow = db
     .prepare(
       `SELECT column_name FROM gpkg_geometry_columns WHERE table_name = ?`
