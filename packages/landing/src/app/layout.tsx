@@ -24,12 +24,21 @@ export const metadata: Metadata = {
     siteName: "Tailwind Loops",
     type: "website",
     locale: "en_US",
+    images: [
+      {
+        url: "https://tailwindloops.com/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Tailwind Loops — Describe your ideal route. Get it in seconds.",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Tailwind Loops — AI-Powered Route Generation",
     description:
       "Describe your ideal ride. Get an optimized route in seconds. AI-powered corridor intelligence for cyclists and runners. Coming soon.",
+    images: ["https://tailwindloops.com/og-image.png"],
   },
 };
 
