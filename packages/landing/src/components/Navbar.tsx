@@ -6,7 +6,7 @@ export function Navbar() {
       <div className="flex items-center gap-3">
         <Image
           src="/logos/logo-plain.png"
-          alt="Tailwind Loops logo"
+          alt="Tailwind Loops logo - a loop of three arrows forming an infinity symbol"
           width={48}
           height={32}
           className="h-8 w-auto"
