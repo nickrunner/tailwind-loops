@@ -50,6 +50,7 @@ export function ActivityTypes() {
                 src={a.photo}
                 alt={a.alt}
                 fill
+                sizes="(max-width: 640px) 50vw, 25vw"
                 className="object-cover"
                 style={a.objectPosition ? { objectPosition: a.objectPosition } : undefined}
               />

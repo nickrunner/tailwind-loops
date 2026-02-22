@@ -33,8 +33,19 @@ export async function POST(request: Request) {
         : typeof data["email_address"] === "object" &&
             Array.isArray(data["email_address"])
           ? (data["email_address"] as string[])[0]
-          : "Failed to subscribe";
-    return NextResponse.json({ error: detail }, { status: res.status });
+          : null;
+
+    // Treat "already subscribed" as success — the user is on the list
+    if (typeof detail === "string" && detail.includes("already subscribed")) {
+      return NextResponse.json({ ok: true });
+    }
+
+    // Never expose raw Buttondown errors to the user
+    console.error("Buttondown API error:", res.status, detail);
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again later." },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({ ok: true });
