@@ -22,11 +22,11 @@ export function HeroSection() {
           Coming Soon
         </span>
         <h1 className="mb-4 text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
-          Describe Your <span className="text-brand-wind">Ideal Route...</span>
+          What's <span className="text-brand-wind">Today's Ride?</span>
         </h1>
         <p className="mb-10 max-w-xl text-lg text-white/80">
-          AI-powered route generation for cyclists, runners, and walkers. Describe your perfect ride
-          in plain English. Distance, vibe, surface, scenery, and get routes built just for you.
+          AI-powered route generation for cyclists, runners, and walkers. Tell us the distance, vibe,
+          surface, and scenery — we'll build the perfect route for you.
         </p>
         <EmailSignup />
       </div>

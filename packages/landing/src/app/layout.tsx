@@ -38,7 +38,7 @@ export const metadata: Metadata = {
         url: "https://tailwindloops.com/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Tailwind Loops — Describe your ideal route. Get it in seconds.",
+        alt: "Tailwind Loops — What's today's ride?",
       },
     ],
   },
