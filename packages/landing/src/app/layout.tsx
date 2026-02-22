@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+const baseUrl = process.env["VERCEL_PROJECT_PRODUCTION_URL"]
+  ? `https://${process.env["VERCEL_PROJECT_PRODUCTION_URL"]}`
+  : "https://tailwindloops.com";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(baseUrl),
   title: "Tailwind Loops — AI-Powered Route Generation for Cyclists & Runners",
   description:
     "Describe your perfect ride and get an optimized route in seconds. Tailwind Loops uses AI and corridor-based intelligence to generate cycling and running routes with sustained flow, safety, and scenery. Coming soon.",
@@ -35,7 +40,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "https://tailwindloops.com/og-image.png",
+        url: "/og-image.png",
         width: 1200,
         height: 630,
         alt: "Tailwind Loops — What's today's ride?",
@@ -47,7 +52,7 @@ export const metadata: Metadata = {
     title: "Tailwind Loops — AI-Powered Route Generation",
     description:
       "Describe your ideal ride. Get an optimized route in seconds. AI-powered corridor intelligence for cyclists and runners. Coming soon.",
-    images: ["https://tailwindloops.com/og-image.png"],
+    images: ["/og-image.png"],
   },
 };
 
