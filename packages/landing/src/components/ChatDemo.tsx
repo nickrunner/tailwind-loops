@@ -126,24 +126,26 @@ export function ChatDemo() {
                     <span className="text-sm font-semibold text-slate-800">Tailwind Loops</span>
                     <span className="text-xs text-slate-400">AI Route Engine</span>
                   </div>
-                  <p className="mb-3 mt-1 text-sm leading-relaxed text-slate-700">
+                  <p className="mt-1 text-sm leading-relaxed text-slate-700">
                     Great call on the gravel today, Nick! I found 3 loops starting from your door
                     with solid elevation and mostly unpaved surfaces. The White Pine Trail loop is
                     a personal favorite for flow:
                   </p>
-                  <div className="flex flex-col gap-2.5">
-                    {routes.map((route) => (
-                      <RouteCard key={route.name} route={route} />
-                    ))}
-                  </div>
-                  <button
-                    disabled
-                    className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
-                  >
-                    <MaterialIcon name="compare_arrows" size={16} />
-                    Compare Routes
-                  </button>
                 </div>
+              </div>
+
+              {/* Route cards — full width */}
+              <div className="flex flex-col gap-2.5 px-1 sm:px-2">
+                {routes.map((route) => (
+                  <RouteCard key={route.name} route={route} />
+                ))}
+                <button
+                  disabled
+                  className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                >
+                  <MaterialIcon name="compare_arrows" size={16} />
+                  Compare Routes
+                </button>
               </div>
             </div>
 
