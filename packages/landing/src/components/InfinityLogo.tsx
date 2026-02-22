@@ -8,9 +8,9 @@ export function InfinityLogo({ className = "" }: { className?: string }) {
     >
       <defs>
         <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#533483" />
-          <stop offset="50%" stopColor="#9333ea" />
-          <stop offset="100%" stopColor="#a855f7" />
+          <stop offset="0%" stopColor="#1e40af" />
+          <stop offset="60%" stopColor="#2563eb" />
+          <stop offset="100%" stopColor="#9333ea" />
         </linearGradient>
       </defs>
       {/* Infinity loop */}

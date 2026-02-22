@@ -40,7 +40,7 @@ export function EmailSignup() {
 
   if (status === "success") {
     return (
-      <div className="rounded-lg border border-green-200 bg-green-50 px-6 py-4 text-green-800">
+      <div className="rounded-lg border border-green-400/30 bg-green-500/20 px-6 py-4 text-white backdrop-blur-sm">
         You're on the list! We'll let you know when Tailwind Loops launches.
       </div>
     );
@@ -54,18 +54,18 @@ export function EmailSignup() {
         placeholder="you@example.com"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="flex-1 rounded-lg border border-slate-200 px-4 py-3 text-sm outline-none transition-colors focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20"
+        className="flex-1 rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-white/50 outline-none backdrop-blur-sm transition-colors focus:border-white/40 focus:ring-2 focus:ring-white/20"
         disabled={status === "loading"}
       />
       <button
         type="submit"
         disabled={status === "loading"}
-        className="rounded-lg bg-gradient-to-r from-brand-purple-dark to-brand-purple px-6 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="rounded-lg bg-white px-6 py-3 text-sm font-semibold text-brand-navy transition-opacity hover:opacity-90 disabled:opacity-60"
       >
         {status === "loading" ? "Joining..." : "Get Notified"}
       </button>
       {status === "error" && (
-        <p className="text-sm text-red-600 sm:col-span-2">{errorMsg}</p>
+        <p className="text-sm text-red-300 sm:col-span-2">{errorMsg}</p>
       )}
     </form>
   );

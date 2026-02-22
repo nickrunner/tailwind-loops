@@ -1,8 +1,31 @@
+import Image from "next/image";
+
 const activities = [
-  { icon: "🚴", name: "Road Cycling" },
-  { icon: "⛰️", name: "Gravel" },
-  { icon: "🏃", name: "Running" },
-  { icon: "🚶", name: "Walking" },
+  {
+    name: "Road Cycling",
+    caption: "Smooth pavement, minimal stops, maximum flow",
+    photo: "/photos/roads/paths-and-gravel/above-clouds-switchback.jpg",
+    alt: "Paved switchback road above the clouds",
+  },
+  {
+    name: "Gravel",
+    caption: "Dirt roads, forest trails, rural exploration",
+    photo: "/photos/roads/paths-and-gravel/farmland-dirt-road.jpg",
+    alt: "Dirt road through farmland",
+  },
+  {
+    name: "Running",
+    caption: "Soft trails and scenic paths at your pace",
+    photo: "/photos/roads/paths-and-gravel/forest-gravel-path.jpg",
+    alt: "Shaded forest trail",
+  },
+  {
+    name: "Walking",
+    caption: "Leisurely paths through nature",
+    photo: "/photos/roads/paths-and-gravel/redwood-boardwalk.jpg",
+    alt: "Boardwalk path through redwood forest",
+    objectPosition: "bottom",
+  },
 ];
 
 export function ActivityTypes() {
@@ -17,15 +40,24 @@ export function ActivityTypes() {
           minimal stops? Gravel rider chasing dirt roads? Runner looking for
           soft trails? Just say so.
         </p>
-        <div className="flex items-center justify-center gap-6 sm:gap-10">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {activities.map((a) => (
-            <div key={a.name} className="flex flex-col items-center gap-2">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-purple/5 text-3xl">
-                {a.icon}
+            <div
+              key={a.name}
+              className="group relative aspect-[3/2] overflow-hidden rounded-xl transition-transform duration-300 hover:scale-[1.02]"
+            >
+              <Image
+                src={a.photo}
+                alt={a.alt}
+                fill
+                className="object-cover"
+                style={a.objectPosition ? { objectPosition: a.objectPosition } : undefined}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
+              <div className="absolute bottom-0 left-0 p-4 text-left">
+                <h3 className="text-lg font-semibold text-white">{a.name}</h3>
+                <p className="text-sm text-white/70">{a.caption}</p>
               </div>
-              <span className="text-sm font-medium text-slate-600">
-                {a.name}
-              </span>
             </div>
           ))}
         </div>
