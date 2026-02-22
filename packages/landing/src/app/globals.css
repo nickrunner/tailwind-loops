@@ -8,6 +8,7 @@
   --color-brand-purple: #9333ea;
   --color-brand-purple-light: #a855f7;
   --color-brand-wind: #93c5fd;
+  --color-brand-bg: #faf9f7;
 
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
@@ -15,5 +16,5 @@
 body {
   font-family: var(--font-sans);
   color: #1e293b;
-  background: #ffffff;
+  background: var(--color-brand-bg);
 }
