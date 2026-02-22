@@ -156,6 +156,45 @@ describe("EdgeSpatialIndex", () => {
       expect(result.has("e1")).toBe(true);
     });
 
+    it("matches observations with osmWayId directly without spatial proximity", () => {
+      // Add osmWayId to edge e1
+      const edgeWithWayId = {
+        ...edges[0]!,
+        osmWayId: "way-12345",
+      };
+      const graphWithWayId = makeGraph(nodes, [edgeWithWayId, edges[1]!]);
+      const index = new EdgeSpatialIndex(graphWithWayId);
+
+      // Observation far from any edge but with matching osmWayId
+      const observations: Observation[] = [
+        {
+          attribute: "surface",
+          source: "mapillary",
+          value: "paved",
+          sourceConfidence: 0.9,
+          osmWayId: "way-12345",
+        },
+      ];
+      const result = index.matchToEdges(observations, 50);
+      expect(result.has(edgeWithWayId.id)).toBe(true);
+      expect(result.get(edgeWithWayId.id)).toHaveLength(1);
+    });
+
+    it("returns empty for osmWayId that doesn't match any edge", () => {
+      const index = new EdgeSpatialIndex(graph);
+      const observations: Observation[] = [
+        {
+          attribute: "surface",
+          source: "mapillary",
+          value: "paved",
+          sourceConfidence: 0.9,
+          osmWayId: "nonexistent-way",
+        },
+      ];
+      const result = index.matchToEdges(observations, 50);
+      expect(result.size).toBe(0);
+    });
+
     it("matches linestring observations via geometry", () => {
       const index = new EdgeSpatialIndex(graph);
       const observations: Observation[] = [

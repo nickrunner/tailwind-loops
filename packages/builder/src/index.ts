@@ -97,6 +97,19 @@ export {
   type DemConfig,
 } from "./elevation/index.js";
 
+// Enrichment
+export {
+  enrichGraph,
+  type EnrichmentOptions,
+  type EnrichmentStats,
+  EdgeSpatialIndex,
+  MapillaryProvider,
+  type MapillaryProviderOptions,
+  HeiGitSurfaceProvider,
+  type HeiGitSurfaceProviderOptions,
+} from "./enrichment/index.js";
+export type { EnrichmentProvider } from "./enrichment/index.js";
+
 // Geofabrik
 export {
   type GeofabrikRegion,

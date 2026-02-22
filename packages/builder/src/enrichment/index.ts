@@ -25,3 +25,9 @@ export {
   type ProviderStats,
   type AttributeStats,
 } from "./pipeline.js";
+export {
+  MapillaryProvider,
+  type MapillaryProviderOptions,
+  HeiGitSurfaceProvider,
+  type HeiGitSurfaceProviderOptions,
+} from "./providers/index.js";

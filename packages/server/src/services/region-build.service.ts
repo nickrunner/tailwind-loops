@@ -13,10 +13,14 @@ import {
   bboxFromCenter,
   expandBbox,
   enrichElevation,
+  enrichGraph,
+  MapillaryProvider,
+  HeiGitSurfaceProvider,
   type BoundingBox,
   type OsmNode,
   type OsmWay,
 } from "@tailwind-loops/builder";
+import type { EnrichmentProvider } from "@tailwind-loops/builder";
 import type { Graph, CorridorNetwork } from "@tailwind-loops/types";
 import axios from "axios";
 import { NetworkCacheService } from "./network-cache.service.js";
@@ -156,6 +160,30 @@ export class RegionBuildService {
           `${elevStats.nodesEnriched.toLocaleString()} nodes, ` +
           `${elevStats.edgesEnriched.toLocaleString()} edges ` +
           `(${elevStats.nodesMissing} missing)`,
+      );
+    }
+
+    // Data enrichment (opt-in via env vars)
+    const enrichmentProviders: EnrichmentProvider[] = [];
+    const mapillaryToken = process.env["MAPILLARY_ACCESS_TOKEN"];
+    if (mapillaryToken) {
+      enrichmentProviders.push(new MapillaryProvider({ accessToken: mapillaryToken }));
+    }
+    const heigitFile = process.env["HEIGIT_SURFACE_FILE"];
+    if (heigitFile) {
+      enrichmentProviders.push(new HeiGitSurfaceProvider({ filePath: heigitFile }));
+    }
+    if (enrichmentProviders.length > 0) {
+      const enrichStart = Date.now();
+      const enrichStats = await enrichGraph(graph, {
+        bounds: bufferedBbox,
+        providers: enrichmentProviders,
+      });
+      console.log(
+        `[region] Enrichment completed in ${Date.now() - enrichStart}ms: ` +
+          enrichStats.providers
+            .map((p) => `${p.providerName}: ${p.observationCount} obs → ${p.matchedEdgeCount} edges`)
+            .join(", "),
       );
     }
 

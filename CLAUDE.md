@@ -52,6 +52,8 @@ curl "http://localhost:8080/api/interpreter?data=[out:json];node(42.9,-85.7,43.0
 | `OVERPASS_ENDPOINT` | `https://overpass-api.de/api/interpreter` | Overpass API URL. Set to local instance for production. |
 | `ELEVATION_TILES_DIR` | *(unset — elevation skipped)* | Path to SRTM HGT tiles. Enables elevation enrichment when set. |
 | `CACHE_DIR` | `~/.tailwind-loops` | Parent dir for network cache (`<CACHE_DIR>/network-cache/`). |
+| `MAPILLARY_ACCESS_TOKEN` | *(unset — skipped)* | Mapillary API token. Enables stop sign/signal/crosswalk detection from street-level imagery. |
+| `HEIGIT_SURFACE_FILE` | *(unset — skipped)* | Path to HeiGIT GeoPackage (.gpkg) file. Enables ML-based paved/unpaved surface classification. |
 | `PORT` | `3000` | Server listen port. |
 
 ## Monorepo Structure

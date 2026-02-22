@@ -25,6 +25,8 @@ const METERS_PER_DEG_LAT = 111_320;
 export class EdgeSpatialIndex {
   /** cell key -> set of edge IDs */
   private grid = new Map<string, Set<string>>();
+  /** OSM way ID -> edge IDs for direct matching */
+  private wayIdToEdgeIds = new Map<string, string[]>();
   private cellSize: number;
   private midLat: number;
   private metersPerDegLng: number;
@@ -127,6 +129,7 @@ export class EdgeSpatialIndex {
 
   private buildIndex(): void {
     for (const edge of this.graph.edges.values()) {
+      // Spatial grid index
       const cells = new Set<string>();
       for (const coord of edge.geometry) {
         cells.add(this.cellKey(coord));
@@ -139,6 +142,16 @@ export class EdgeSpatialIndex {
         }
         set.add(edge.id);
       }
+
+      // OSM way ID index for direct matching
+      if (edge.osmWayId) {
+        let list = this.wayIdToEdgeIds.get(edge.osmWayId);
+        if (!list) {
+          list = [];
+          this.wayIdToEdgeIds.set(edge.osmWayId, list);
+        }
+        list.push(edge.id);
+      }
     }
   }
 
@@ -146,6 +159,12 @@ export class EdgeSpatialIndex {
     obs: Observation,
     maxDistance: number
   ): string[] {
+    // Direct OSM way ID matching (bypasses spatial index)
+    if (obs.osmWayId) {
+      const edgeIds = this.wayIdToEdgeIds.get(obs.osmWayId);
+      return edgeIds ?? [];
+    }
+
     // Point observations (signs, signals, crossings)
     if (
       obs.attribute === "stop-sign" ||

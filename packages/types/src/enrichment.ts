@@ -70,6 +70,8 @@ export interface Observation<A extends EnrichableAttribute = EnrichableAttribute
   observedAt?: Date;
   /** Geometry associated with the observation (point or linestring) */
   geometry?: { lat: number; lng: number }[];
+  /** OSM way ID for direct edge matching (bypasses spatial index) */
+  osmWayId?: string;
 }
 
 // ---------------------------------------------------------------------------
