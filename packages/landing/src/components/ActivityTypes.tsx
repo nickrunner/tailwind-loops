@@ -22,7 +22,7 @@ const activities = [
   {
     name: "Walking",
     caption: "Leisurely paths through nature",
-    photo: "/photos/roads/paths-and-gravel/redwood-boardwalk.jpg",
+    photo: "/photos/roads/paths-and-gravel/redwood-boardwalk2.jpg",
     alt: "Boardwalk path through redwood forest",
     objectPosition: "bottom",
   },
@@ -31,7 +31,7 @@ const activities = [
 export function ActivityTypes() {
   return (
     <section className="px-6 py-16">
-      <div className="mx-auto max-w-3xl text-center">
+      <div className="mx-auto max-w-5xl text-center">
         <h2 className="mb-3 text-2xl font-bold text-brand-navy sm:text-3xl">
           Routes for Every Kind of Move
         </h2>
@@ -40,11 +40,11 @@ export function ActivityTypes() {
           minimal stops? Gravel rider chasing dirt roads? Runner looking for
           soft trails? Just say so.
         </p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
           {activities.map((a) => (
             <div
               key={a.name}
-              className="group relative aspect-[3/2] overflow-hidden rounded-xl transition-transform duration-300 hover:scale-[1.02]"
+              className="group relative aspect-[3/4] overflow-hidden rounded-xl transition-transform duration-300 hover:scale-[1.02]"
             >
               <Image
                 src={a.photo}
