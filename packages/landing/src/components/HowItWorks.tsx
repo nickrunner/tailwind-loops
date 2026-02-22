@@ -1,18 +1,20 @@
+import { MaterialIcon } from "./icons";
+
 const steps = [
   {
-    icon: "🧠",
+    icon: "psychology",
     title: "You Describe, AI Understands",
     description:
       "Tell us what you want in plain language — distance, surface, scenery, difficulty. Our AI translates your intent into precise routing parameters.",
   },
   {
-    icon: "🗺️",
+    icon: "map",
     title: "Corridor Intelligence",
     description:
       "We don't just connect waypoints. We analyze thousands of road and trail corridors, scoring each for flow, safety, surface quality, and scenery — then chain them into seamless loops.",
   },
   {
-    icon: "🔄",
+    icon: "all_inclusive",
     title: "Routes That Flow",
     description:
       "Long uninterrupted stretches instead of a zig-zag of turn-by-turn fragments. Fewer stops, better rhythm, more enjoyment — whether you're on a road bike, gravel rig, or running shoes.",
@@ -33,8 +35,8 @@ export function HowItWorks() {
         <div className="grid gap-8 sm:grid-cols-3">
           {steps.map((step) => (
             <div key={step.title} className="text-center">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-3xl shadow-sm border border-slate-100">
-                {step.icon}
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-brand-purple shadow-sm border border-slate-100">
+                <MaterialIcon name={step.icon} size={28} />
               </div>
               <h3 className="mb-2 text-lg font-semibold text-brand-navy">
                 {step.title}
