@@ -154,7 +154,7 @@ export function ChatDemo() {
               <div className="flex items-center gap-3">
                 <input
                   type="text"
-                  placeholder="Describe your ideal route..."
+                  placeholder="What's today's ride?"
                   disabled
                   className="flex-1 bg-transparent text-sm text-slate-700 placeholder-slate-400 outline-none"
                 />
